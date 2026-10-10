@@ -15,7 +15,7 @@
   var stack = null;
   try { stack = new R.DiscStack(glCanvas); stack.build(BUDGET); }
   catch (e) { console.warn('WebGL2 disc stack disabled:', e.message); stack = null; }
-  var hud = R.HUD ? new R.HUD(hudCanvas) : null;
+  var hud = R.HUD && !params.has("nohud") ? new R.HUD(hudCanvas) : null;
 
   var LW = 0, LH = 0, pr = 1, portrait = false;
   var FOV = 33 * Math.PI / 180;
@@ -35,13 +35,13 @@
   window.addEventListener('resize', layout);
   layout();
 
-  var CAM_DIST = 7.9;
-  var TARGET = [0.14, 0.12, 0.1];
+  var CAM_DIST = 8.0;
+  var TARGET = [0.0, 0.0, 0.0];
 
   function camera(t) {
     // slow breathing of the viewing angle, a few degrees, closes on the loop
-    var yaw = -0.16 + 0.055 * Math.sin(TAU * t / LOOP);
-    var pitch = 0.1 + 0.035 * Math.sin(TAU * t / LOOP * 2 + 1.1);
+    var yaw = 0.0 + 0.05 * Math.sin(TAU * t / LOOP);
+    var pitch = 0.0 + 0.03 * Math.sin(TAU * t / LOOP * 2 + 1.1);
     var eye = [TARGET[0] + CAM_DIST * Math.sin(yaw) * Math.cos(pitch),
       TARGET[1] + CAM_DIST * Math.sin(pitch),
       TARGET[2] + CAM_DIST * Math.cos(yaw) * Math.cos(pitch)];

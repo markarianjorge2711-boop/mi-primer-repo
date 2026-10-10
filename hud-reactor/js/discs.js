@@ -50,8 +50,8 @@
 
   /* ---------- palette (linear-ish values, written straight to an sRGB buffer) ---------- */
   var C = {
-    cyan: [0.22, 0.82, 1.0],
-    blue: [0.10, 0.48, 1.0],
+    cyan: [0.14, 0.64, 1.0],
+    blue: [0.07, 0.36, 1.0],
     deep: [0.06, 0.28, 0.95],
     ice: [0.62, 0.92, 1.0],
     white: [0.93, 0.97, 1.0],
@@ -60,14 +60,22 @@
     amber: [1.0, 0.62, 0.16]
   };
 
-  /* ---------- the five discs: centre, normal, radius (world units) ---------- */
+  /* ---------- component frames: centre, normal (all threaded on one oblique axis) ----------
+     Placed from the reference: big tick disc + rosette on the left, second rosette, the
+     ring-banded cylinder in the middle, a loose ring cluster, the yellow-core disc and two
+     blocky discs on the right inside a halo of faint gear rings. Normals turn from almost
+     face-on (left) to almost edge-on (right), which is how the reference reads. */
   var DISCS = [
-    { c: [-0.46, 0.92, -0.10], n: [0.16, 0.24, 1.0], R: 1.18, label: 'D-01 PRIMARY RING' },   // big, almost face-on
-    { c: [-0.08, 0.22, 0.12], n: [0.30, 0.55, 0.85], R: 0.34, label: 'D-02 COUPLER' },       // translucent connector
-    { c: [0.22, -0.18, 0.22], n: [0.32, 0.72, 0.70], R: 0.62, label: 'D-03 IGNITION CORE' }, // yellow core
-    { c: [0.52, -0.70, 0.30], n: [0.18, 1.0, 0.16], R: 0.82, label: 'D-04 LATTICE A' },     // blocky, edge-on
-    { c: [0.84, -1.36, 0.42], n: [0.26, 1.0, 0.10], R: 0.68, label: 'D-05 LATTICE B' }      // blocky, edge-on
+    { c: [-1.86, 0.80, -0.10], n: [-0.30, 0.20, 1.0], R: 1.55, label: 'PRIMARY RING' },    // 0 big tick disc + rosette 1
+    { c: [-0.98, 0.46, 0.10], n: [-0.10, 0.12, 1.0], R: 0.56, label: 'ROTOR B' },          // 1 rosette 2
+    { c: [-0.20, 0.25, 0.20], n: [1.30, -0.72, 0.62], R: 0.36, label: 'J_CORE' },          // 2 cylinder axis
+    { c: [0.82, -0.42, 0.30], n: [1.0, -0.40, 0.90], R: 0.9, label: 'RING CLUSTER' },      // 3 loose rings
+    { c: [1.42, -0.55, 0.40], n: [1.30, -0.45, 0.80], R: 0.62, label: 'CATALYST' },        // 4 yellow core disc
+    { c: [1.74, -0.62, 0.15], n: [1.25, -0.40, 0.95], R: 0.72, label: 'LATTICE A' },       // 5 blocky disc 1
+    { c: [2.2, -0.98, -0.05], n: [1.25, -0.40, 0.90], R: 0.86, label: 'LATTICE B' },      // 6 blocky disc 2
+    { c: [1.80, -0.70, -0.25], n: [1.0, -0.30, 1.05], R: 1.55, label: 'HALO' }             // 7 faint gear halo
   ];
+  var NFRAMES = DISCS.length;
   DISCS.forEach(function (d) {
     d.n = norm(d.n);
     var ref = Math.abs(d.n[1]) > 0.9 ? [0, 0, 1] : [0, 1, 0];
@@ -178,7 +186,7 @@
       ring(b, {
         d: d, cx: cx, cz: cz, r: r, S: 8, k: dir * (i % 2 ? 1 : -1) * (1 + (i % 3)),
         spacing: 0.0045, cover: i % 3 === 0 ? 1 : 0.62 + rnd() * 0.3, arcs: 2,
-        col: i % 4 === 1 ? C.white : (i % 2 ? C.cyan : C.blue), a: i % 4 === 1 ? 0.55 : 0.85, size: 1.0
+        col: i % 6 === 1 ? C.ice : (i % 2 ? C.cyan : C.blue), a: i % 6 === 1 ? 0.6 : 0.9, size: 1.0
       });
     }
     // gear teeth on the rim
@@ -186,10 +194,17 @@
     var step = b.step(0.0065);
     for (var t = 0; t < teeth; t++) {
       for (var rr = R + 0.008, ri = 0; rr < R + 0.04; rr += step, ri++) {
-        for (var a = -0.28, ai = 0; a <= 0.28; a += step / rr / sector, ai++) {
-          b.push(d, cx, cz, 0, rr, t * sector + a * sector, om, 0, C.cyan, 0.9, 1.0, 0, 0, (ri * 0.317 + ai * 0.619) % 1);
+        for (var a = -0.28, aq = 0; a <= 0.28; a += step / rr / sector, aq++) {
+          b.push(d, cx, cz, 0, rr, t * sector + a * sector, om, 0, C.cyan, 0.9, 1.0, 0, 0, (ri * 0.317 + aq * 0.619) % 1);
         }
       }
+    }
+    // scalloped rim: a ring of little loops
+    var nL = 22;
+    for (var li = 0; li < nL; li++) {
+      var la = li * TAU / nL;
+      ring(b, { d: d, cx: cx + Math.cos(la) * (R + 0.07), cz: cz + Math.sin(la) * (R + 0.07), oc: omega(2 * dir, nL), r: 0.045,
+        S: 4, k: -dir, pseed: 301, spacing: 0.0045, cover: 1, col: li % 2 ? C.cyan : C.blue, a: 0.85, size: 0.95 });
     }
     // six-petal curve
     var petals = 6, ps = TAU / petals, pom = omega(-dir, petals);
@@ -263,63 +278,94 @@
 
   function buildStack(density) {
     var b = new Builder(density, 20251010);
-    var i;
+    var rnd = b.rnd, i, k;
 
-    /* D1 – large, almost face-on: rings of sparse radial ticks + twin rosettes */
-    var d1 = DISCS[0];
-    var tickRings = [0.66, 0.76, 0.86, 0.96, 1.06, 1.16];
-    tickRings.forEach(function (r, idx) {
-      dashes(b, { d: 0, r0: r - 0.01, r1: r + 0.01, len: [0.012, idx % 2 ? 0.05 : 0.03], perSector: 12 + idx * 3, S: 12,
-        k: idx % 2 ? 1 : -1, spacing: 0.005, dir: 'radial', cols: [C.white, C.white, C.grey, C.ice], a: 1.0, size: 0.95 });
-      ring(b, { d: 0, r: r + 0.025, S: 12, k: idx % 2 ? 1 : -1, spacing: 0.011, cover: 0.55, arcs: 2,
-        col: idx === 5 ? C.cyan : C.grey, a: idx === 5 ? 0.7 : 0.35, size: 0.85 });
+    /* 0 – big disc: faint rings of sparse white radial ticks + rosette 1 */
+    [0.82, 0.96, 1.10, 1.24, 1.38, 1.52].forEach(function (r, idx) {
+      dashes(b, { d: 0, r0: r - 0.02, r1: r + 0.02, len: [0.02, idx % 2 ? 0.09 : 0.05], perSector: 7 + idx * 2, S: 12,
+        k: idx % 2 ? 1 : -1, spacing: 0.0055, dir: 'radial', cols: [C.white, C.white, C.grey, C.ice], a: 0.85, size: 1.0 });
+      ring(b, { d: 0, r: r + 0.04, S: 12, k: idx % 2 ? -1 : 1, spacing: 0.014, cover: 0.4, arcs: 2, col: C.grey, a: 0.3, size: 0.85 });
     });
-    // fine regular tick crown on the very rim
-    dashes(b, { d: 0, r0: d1.R + 0.05, r1: d1.R + 0.05, len: [0.02, 0.02], perSector: 1, S: 180, k: -1, spacing: 0.006, dir: 'radial', col: C.white, a: 0.55, size: 0.85 });
-    ring(b, { d: 0, r: 0.6, S: 6, k: 1, spacing: 0.007, cover: 1, col: C.blue, a: 0.6, size: 0.9 });
-    scatter(b, { d: 0, r0: 0.62, r1: 1.2, perSector: 260, S: 12, k: 1, cols: [C.white, C.grey, C.cyan], a: 0.6, size: 0.9 });
-    rosette(b, 0, -0.29, 0.0, 0.25, 1);
-    scatter(b, { d: 0, r0: 0.0, r1: 0.58, perSector: 120, S: 12, k: -1, cols: [C.cyan, C.blue, C.white], a: 0.45, size: 0.9 });
-    rosette(b, 0, 0.29, 0.0, 0.25, -1);
+    // gear crown: tick teeth all round the rim
+    dashes(b, { d: 0, r0: 1.62, r1: 1.62, len: [0.05, 0.05], perSector: 1, S: 120, k: -1, spacing: 0.007, dir: 'radial', col: C.grey, a: 0.42, size: 0.9 });
+    dashes(b, { d: 0, r0: 0.66, r1: 0.7, len: [0.03, 0.06], perSector: 2, S: 40, k: 1, spacing: 0.006, dir: 'radial', col: C.white, a: 0.7, size: 0.95 });
+    rosette(b, 0, 0, 0, 0.5, 1);
 
-    /* D2 – translucent cluster of little rings */
-    var d2 = DISCS[1];
-    var rnd = b.rnd;
-    for (i = 0; i < 3; i++) { // 3 patterns x 3-fold = 9 small circles
-      var cr = 0.06 + rnd() * 0.2, ca = rnd() * TAU / 3, rad = 0.03 + rnd() * 0.06;
-      for (var s = 0; s < 3; s++) {
-        var a = ca + s * TAU / 3;
-        ring(b, { d: 1, cx: Math.cos(a) * cr, cz: Math.sin(a) * cr, oc: omega(1, 3), r: rad, S: 4, k: 1, pseed: 101 + i,
-          spacing: 0.0042, cover: 1, col: i === 1 ? C.ice : C.blue, a: 0.65, size: 0.95 });
+    /* 1 – rosette 2, white specks around it */
+    rosette(b, 1, 0, 0, 0.52, -1);
+    dashes(b, { d: 1, r0: 0.66, r1: 0.82, len: [0.01, 0.04], perSector: 5, S: 12, k: 1, spacing: 0.006, dir: 'tangent', cols: [C.white, C.ice, C.cyan], a: 0.8, size: 1.0 });
+
+    /* 2 – ring-banded cylinder (the bright centre piece) */
+    var L = 2.15, Rc = 0.36, nb = 6;
+    for (k = 0; k < nb; k++) {
+      var hk = -L / 2 + k * L / (nb - 1);
+      ring(b, { d: 2, r: Rc, h: hk, S: 12, k: k % 2 ? 1 : -1, spacing: 0.0055, cover: 0.85, arcs: 3, col: C.cyan, a: 0.95, size: 1.0 });
+      ring(b, { d: 2, r: Rc + 0.035, h: hk + 0.045, S: 12, k: k % 2 ? -1 : 1, spacing: 0.0075, cover: 1, col: C.blue, a: 0.75, size: 0.95 });
+      ring(b, { d: 2, r: Rc * 0.68, h: hk, S: 8, k: 1, spacing: 0.008, cover: 0.6, arcs: 2, col: C.ice, a: 0.55, size: 0.9 });
+    }
+    // struts along the wall
+    var nS = 36, sstep = b.step(0.009);
+    for (k = 0; k < nS; k++) {
+      for (var hh = -L / 2, si = 0; hh <= L / 2; hh += sstep, si++) {
+        b.push(2, 0, 0, 0, Rc, k * TAU / nS, omega(3, nS), hh, k % 3 ? C.cyan : C.ice, k % 3 ? 0.6 : 0.85, 0.95, 0, 0, (si * 0.618) % 1);
       }
     }
-    ring(b, { d: 1, r: d2.R * 0.6, S: 6, k: -1, spacing: 0.007, cover: 0.7, arcs: 3, col: C.cyan, a: 0.35, size: 0.9 });
-    ring(b, { d: 1, r: d2.R, S: 6, k: 1, spacing: 0.006, cover: 1, col: C.blue, a: 0.35, size: 0.9 });
-    scatter(b, { d: 1, r0: 0, r1: d2.R, perSector: 120, S: 6, k: 1, cols: [C.cyan, C.white], a: 0.5, size: 1.0 });
-
-    /* D3 – bright yellow core, tight white dot rings, outer dashes */
-    var d3 = DISCS[2];
-    scatter(b, { d: 2, r0: 0, r1: 0.075, perSector: 200, S: 6, k: 1, cols: [C.yellow, C.yellow, C.amber, C.white], a: 1.0, size: 1.25 });
-    for (i = 0; i < 14; i++) {
-      ring(b, { d: 2, r: 0.1 + i * 0.022, S: 10, k: i % 2 ? 1 : -1, spacing: 0.0062, cover: i % 4 === 0 ? 1 : 0.7, arcs: 3,
-        col: i % 5 === 2 ? C.cyan : C.white, a: 0.62, size: 0.95 });
+    // end caps: concentric rings + spokes
+    [-L / 2, L / 2].forEach(function (hc, j) {
+      for (var r = 0.07; r < Rc; r += 0.062) {
+        ring(b, { d: 2, r: r, h: hc, S: 8, k: j ? 1 : -1, spacing: 0.0065, cover: 0.8, arcs: 2, col: j ? C.white : C.cyan, a: 0.75, size: 0.95 });
+      }
+      dashes(b, { d: 2, r0: 0.05, r1: 0.05, len: [Rc - 0.06, Rc - 0.06], perSector: 1, S: 8, k: j ? -1 : 1, h: hc, spacing: 0.007, dir: 'radial', col: C.ice, a: 0.8, size: 0.95 });
+    });
+    // flanges + inner core helix
+    [-0.8, 0.0, 0.8].forEach(function (hf) {
+      dashes(b, { d: 2, r0: Rc + 0.07, r1: Rc + 0.07, len: [0.02, 0.06], perSector: 2, S: 24, k: 1, h: hf, spacing: 0.006, dir: 'tangent', col: C.white, a: 0.8, size: 0.95 });
+    });
+    var hstep = b.step(0.006);
+    for (var hx = -L / 2, hi = 0; hx <= L / 2; hx += hstep, hi++) {
+      b.push(2, 0, 0, 0, 0.17, hx * 9, omega(1, 1), hx, C.cyan, 0.8, 1.0, 0, 0, (hi * 0.618) % 1);
+      b.push(2, 0, 0, 0, 0.17, hx * 9 + Math.PI, omega(1, 1), hx, C.white, 0.6, 0.95, 0, 0, (hi * 0.382) % 1);
     }
-    dashes(b, { d: 2, r0: 0.43, r1: d3.R, len: [0.015, 0.06], perSector: 24, S: 16, k: -1, spacing: 0.005, dir: 'tangent',
-      cols: [C.cyan, C.blue, C.white, C.ice], a: 0.85, size: 1.0 });
-    ring(b, { d: 2, r: d3.R + 0.03, S: 8, k: 1, spacing: 0.008, cover: 0.8, arcs: 2, col: C.blue, a: 0.6, size: 0.9 });
+    scatter(b, { d: 2, r0: 0.0, r1: Rc, perSector: 60, S: 8, k: 1, hj: L, cols: [C.cyan, C.blue, C.white], a: 0.5, size: 0.9 });
 
-    /* D4 / D5 – circular cities */
-    var d4 = DISCS[3], d5 = DISCS[4];
-    blockDisc(b, 3, 0.1, d4.R, 6, 1, 0.34, 0.0);
-    blockDisc(b, 4, 0.1, d5.R, 6, -1, 0.28, 2.1);
-    [3, 4].forEach(function (d, j) {
+    /* 3 – loose cluster of little rings (translucent connector) */
+    for (i = 0; i < 6; i++) {
+      var cr = 0.15 + rnd() * 0.75, ca = rnd() * TAU / 3, rad = 0.035 + rnd() * 0.07, hv = (rnd() - 0.5) * 0.7;
+      for (var s = 0; s < 3; s++) {
+        var a = ca + s * TAU / 3;
+        ring(b, { d: 3, cx: Math.cos(a) * cr, cz: Math.sin(a) * cr, oc: omega(1, 3), r: rad, h: hv, S: 4, k: 1, pseed: 201 + i,
+          spacing: 0.0045, cover: 1, col: i % 3 ? C.white : C.ice, a: 0.55, size: 0.95 });
+      }
+    }
+    scatter(b, { d: 3, r0: 0.1, r1: 1.0, perSector: 60, S: 6, k: -1, hj: 0.6, cols: [C.white, C.grey, C.cyan], a: 0.5, size: 0.9 });
+
+    /* 4 – yellow core disc: warm core, tight white dot rings, outer dashes */
+    var d4 = DISCS[4];
+    scatter(b, { d: 4, r0: 0, r1: 0.12, perSector: 170, S: 6, k: 1, cols: [C.yellow, C.yellow, C.amber, C.white], a: 1.0, size: 1.2 });
+    for (i = 0; i < 12; i++) {
+      ring(b, { d: 4, r: 0.15 + i * 0.03, S: 10, k: i % 2 ? 1 : -1, spacing: 0.0062, cover: i % 4 === 0 ? 1 : 0.7, arcs: 3,
+        col: i % 4 === 2 ? C.yellow : C.white, a: i % 4 === 2 ? 0.55 : 0.62, size: 0.95 });
+    }
+    dashes(b, { d: 4, r0: 0.52, r1: d4.R, len: [0.015, 0.06], perSector: 16, S: 16, k: -1, spacing: 0.005, dir: 'tangent',
+      cols: [C.cyan, C.blue, C.white, C.ice], a: 0.85, size: 1.0 });
+
+    /* 5, 6 – blocky discs (circular cities) */
+    blockDisc(b, 5, 0.12, DISCS[5].R, 6, 1, 0.22, 0.0);
+    blockDisc(b, 6, 0.14, DISCS[6].R, 6, -1, 0.26, 2.1);
+    [5, 6].forEach(function (d, j) {
       var R = DISCS[d].R;
       ring(b, { d: d, r: R + 0.04, S: 6, k: j ? -1 : 1, spacing: 0.007, cover: 1, col: C.cyan, a: 0.55, size: 0.9 });
-      ring(b, { d: d, r: 0.07, S: 6, k: 1, spacing: 0.006, cover: 1, col: C.ice, a: 0.8, size: 1.0 });
-      scatter(b, { d: d, r0: R + 0.08, r1: R + 0.42, perSector: 70, S: 12, k: j ? 1 : -1, hj: 0.04, cols: [C.cyan, C.blue, C.white], a: 0.6, size: 0.9 });
-      ring(b, { d: d, r: R + 0.28, S: 12, k: j ? 1 : -1, spacing: 0.012, cover: 0.45, arcs: 2, col: C.grey, a: 0.4, size: 0.85 });
-      scatter(b, { d: d, r0: 0, r1: 0.06, perSector: 12, S: 6, k: 1, col: C.yellow, a: 0.9, size: 1.1 });
+      scatter(b, { d: d, r0: 0, r1: 0.1, perSector: 40, S: 6, k: 1, cols: [C.cyan, C.ice, C.white], a: 1.0, size: 1.25 });
+      scatter(b, { d: d, r0: R + 0.06, r1: R + 0.3, perSector: 50, S: 12, k: j ? 1 : -1, hj: 0.05, cols: [C.cyan, C.blue, C.white], a: 0.55, size: 0.9 });
     });
+
+    /* 7 – faint white gear rings around the right group */
+    [0.95, 1.18, 1.4, 1.58].forEach(function (r, idx) {
+      dashes(b, { d: 7, r0: r, r1: r, len: [0.03, idx % 2 ? 0.08 : 0.05], perSector: 3, S: 36, k: idx % 2 ? 1 : -1,
+        spacing: 0.006, dir: 'radial', cols: [C.white, C.grey, C.grey], a: 0.42, size: 0.9 });
+      ring(b, { d: 7, r: r - 0.03, S: 12, k: idx % 2 ? -1 : 1, spacing: 0.012, cover: 0.55, arcs: 3, col: C.grey, a: 0.3, size: 0.85 });
+    });
+    scatter(b, { d: 7, r0: 0.7, r1: 1.6, perSector: 90, S: 12, k: 1, hj: 0.3, cols: [C.white, C.grey, C.ice], a: 0.4, size: 0.9 });
 
     var data = new Float32Array(b.buf);
     return { data: data, count: b.count };
@@ -336,7 +382,7 @@
     'layout(location=4) in vec4 a4;',
     'uniform mat4 uViewProj;',
     'uniform vec3 uCamPos;',
-    'uniform vec3 uDC[5]; uniform vec3 uDU[5]; uniform vec3 uDV[5]; uniform vec3 uDN[5];',
+    'uniform vec3 uDC[8]; uniform vec3 uDU[8]; uniform vec3 uDV[8]; uniform vec3 uDN[8];',
     'uniform float uTime;',      // 0..16 loop time
     'uniform float uIntro;',     // 0..1
     'uniform float uPx;',        // device px per world unit at distance 1
@@ -450,13 +496,113 @@
     this.density = this.count / Math.min(this.total, 60000);
   };
 
+  /* ---------- glow: points -> scene texture -> quarter-res blur -> scene + glow ---------- */
+  var QVS = [
+    '#version 300 es',
+    'out vec2 vUv;',
+    'void main(){',
+    '  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));',
+    '  vUv = p;',
+    '  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);',
+    '}'
+  ].join('\n');
+  var BLUR_FS = [
+    '#version 300 es',
+    'precision mediump float;',
+    'in vec2 vUv; out vec4 o;',
+    'uniform sampler2D uTex; uniform vec2 uDir;',
+    'void main(){',
+    '  vec3 c = texture(uTex, vUv).rgb * 0.227;',
+    '  c += (texture(uTex, vUv + uDir * 1.385).rgb + texture(uTex, vUv - uDir * 1.385).rgb) * 0.316;',
+    '  c += (texture(uTex, vUv + uDir * 3.231).rgb + texture(uTex, vUv - uDir * 3.231).rgb) * 0.070;',
+    '  o = vec4(c, 1.0);',
+    '}'
+  ].join('\n');
+  var COMP_FS = [
+    '#version 300 es',
+    'precision mediump float;',
+    'in vec2 vUv; out vec4 o;',
+    'uniform sampler2D uScene; uniform sampler2D uGlow; uniform sampler2D uGlow2; uniform float uGain;',
+    'void main(){',
+    '  vec3 s = texture(uScene, vUv).rgb;',
+    '  vec3 g = texture(uGlow, vUv).rgb * 1.1 + texture(uGlow2, vUv).rgb * 0.55;',
+    '  vec3 c = s * 1.25 + g * uGain;',
+    '  c = vec3(1.0) - exp(-c * 1.6);',       // soft shoulder so dense cores stay blue, not flat white
+    '  o = vec4(c, 1.0);',
+    '}'
+  ].join('\n');
+
+  function program(gl, vs, fs) {
+    var p = gl.createProgram();
+    gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
+  function target(gl, w, h) {
+    var tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    var fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    return { tex: tex, fb: fb, w: w, h: h };
+  }
+  function freeTarget(gl, t) { if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); } }
+
+  DiscStack.prototype.initGlow = function () {
+    var gl = this.gl;
+    this.blurProg = program(gl, QVS, BLUR_FS);
+    this.compProg = program(gl, QVS, COMP_FS);
+    this.bu = { tex: gl.getUniformLocation(this.blurProg, 'uTex'), dir: gl.getUniformLocation(this.blurProg, 'uDir') };
+    this.cu = {
+      scene: gl.getUniformLocation(this.compProg, 'uScene'), glow: gl.getUniformLocation(this.compProg, 'uGlow'),
+      glow2: gl.getUniformLocation(this.compProg, 'uGlow2'), gain: gl.getUniformLocation(this.compProg, 'uGain')
+    };
+    this.emptyVao = gl.createVertexArray();
+  };
+
   DiscStack.prototype.resize = function (w, h) {
+    var gl = this.gl;
     this.canvas.width = w; this.canvas.height = h;
-    this.gl.viewport(0, 0, w, h);
+    this.w = w; this.h = h;
+    if (!this.blurProg) this.initGlow();
+    [this.scene, this.ga, this.gb, this.gc, this.gd].forEach(function (t) { freeTarget(gl, t); });
+    this.scene = target(gl, w, h);
+    var qw = Math.max(1, w >> 2), qh = Math.max(1, h >> 2);   // quarter res: tight glow
+    var ew = Math.max(1, w >> 3), eh = Math.max(1, h >> 3);   // eighth res: wide haze
+    this.ga = target(gl, qw, qh); this.gb = target(gl, qw, qh);
+    this.gc = target(gl, ew, eh); this.gd = target(gl, ew, eh);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  };
+
+  DiscStack.prototype.blur = function (src, a, b) {
+    var gl = this.gl;
+    gl.useProgram(this.blurProg);
+    gl.uniform1i(this.bu.tex, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    // src -> a (horizontal, also the downsample), a -> b (vertical), b -> a (horizontal), a -> b (vertical)
+    var passes = [[src, a, 1, 0], [a, b, 0, 1], [b, a, 1, 0], [a, b, 0, 1]];
+    for (var i = 0; i < passes.length; i++) {
+      var p = passes[i];
+      gl.bindFramebuffer(gl.FRAMEBUFFER, p[1].fb);
+      gl.viewport(0, 0, p[1].w, p[1].h);
+      gl.bindTexture(gl.TEXTURE_2D, p[0].tex);
+      gl.uniform2f(this.bu.dir, p[2] / p[1].w, p[3] / p[1].h);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    return b;
   };
 
   DiscStack.prototype.render = function (cam, loopT, intro, pr) {
     var gl = this.gl, u = this.u;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.scene.fb);
+    gl.viewport(0, 0, this.w, this.h);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.prog);
@@ -468,13 +614,28 @@
     gl.uniform1f(u.uIntro, intro);
     gl.uniform1f(u.uKeep, this.keep);
     gl.uniform1f(u.uPx, cam.pxPerUnit);
-    gl.uniform1f(u.uSize, 0.0128 / Math.sqrt(Math.max(0.25, this.density)));
+    gl.uniform1f(u.uSize, 0.0145 / Math.sqrt(Math.max(0.25, this.density)));
     gl.uniform1f(u.uMaxPx, 9 * pr);
     var dc = [], du = [], dv = [], dn = [];
     cam.discs.forEach(function (d) { dc.push.apply(dc, d.c); du.push.apply(du, d.u); dv.push.apply(dv, d.v); dn.push.apply(dn, d.n); });
     gl.uniform3fv(u.uDC, dc); gl.uniform3fv(u.uDU, du); gl.uniform3fv(u.uDV, dv); gl.uniform3fv(u.uDN, dn);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.POINTS, 0, this.total);
+    gl.disable(gl.BLEND);
+
+    gl.bindVertexArray(this.emptyVao);
+    var g1 = this.blur(this.scene, this.ga, this.gb);
+    var g2 = this.blur(g1, this.gc, this.gd);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.w, this.h);
+    gl.useProgram(this.compProg);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.scene.tex);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, g1.tex);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, g2.tex);
+    gl.uniform1i(this.cu.scene, 0); gl.uniform1i(this.cu.glow, 1); gl.uniform1i(this.cu.glow2, 2);
+    gl.uniform1f(this.cu.gain, 1.0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindVertexArray(null);
   };
 
