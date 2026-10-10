@@ -510,9 +510,10 @@
   HUD.prototype.drawStatus = function (ctx, t, perf, points) {
     if (t < 1.2) return;
     var u = this.u, m = this.m, LW = this.LW, LH = this.LH;
-    font(ctx, Math.max(6, 6.5 * u), 400);
+    font(ctx, Math.max(9, 10 * u), 400);
     ctx.fillStyle = COL.dim;
     var fps = perf && perf.fps ? perf.fps : 0;
+    text(ctx, 'DRAG: ORBIT   WHEEL / PINCH: ZOOM   DOUBLE-CLICK: RESET', LW / 2, LH - m - 12 * u, 'center');
     text(ctx, 'FRM ' + (fps ? (1000 / fps).toFixed(1) : '--.-') + ' MS  ' + fps.toFixed(0) + ' HZ  PTS ' + points + '  LOOP ' + (t % 16).toFixed(1),
       LW - m - 20 * u, LH - m - 12 * u, 'right');
   };

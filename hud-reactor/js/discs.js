@@ -56,9 +56,9 @@
     ice: [0.62, 0.92, 1.0],
     white: [0.93, 0.97, 1.0],
     grey: [0.55, 0.62, 0.70],
-    yellow: [1.0, 0.80, 0.28],
+    yellow: [0.95, 0.78, 0.12],
     amber: [1.0, 0.62, 0.16],
-    olive: [0.86, 0.86, 0.34]
+    olive: [0.62, 0.62, 0.12]
   };
 
   /* ---------- component frames: centre, normal (all threaded on one oblique axis) ----------
@@ -70,12 +70,13 @@
     { c: [-1.72, 0.62, -0.10], n: [-0.30, 0.20, 1.0], R: 1.55, label: 'PRIMARY RING' },    // 0 big stroke gear + rosette 1
     { c: [-0.98, 0.46, 0.10], n: [-0.10, 0.12, 1.0], R: 0.5, label: 'ROTOR B' },           // 1 rosette 2 (bell face)
     { c: [-0.06, 0.14, 0.54], n: [1.30, -0.45, 0.62], R: 0.38, label: 'J_CORE' },           // 2 barrel axis
-    { c: [0.95, -0.22, 0.40], n: [1.0, -0.40, 0.90], R: 0.9, label: 'RING CLUSTER' },      // 3 loose rings
-    { c: [1.30, -0.30, 0.50], n: [1.25, -0.40, 0.90], R: 0.45, label: 'CATALYST' },        // 4 yellow core gear
-    { c: [1.50, -0.38, 0.20], n: [1.20, -0.35, 0.85], R: 0.66, label: 'LATTICE A' },       // 5 blue drum 1
-    { c: [2.32, -0.82, 0.00], n: [1.20, -0.35, 0.8], R: 0.86, label: 'LATTICE B' },       // 6 blue drum 2
-    { c: [1.45, -0.30, -0.20], n: [1.0, -0.30, 1.05], R: 1.5, label: 'HALO' },             // 7 faint gear halo (yellow side)
-    { c: [2.35, -0.78, -0.30], n: [1.1, -0.30, 1.0], R: 1.5, label: 'HALO B' }             // 8 faint gear halo (outer drum)
+    { c: [0.95, -0.36, 0.40], n: [1.0, -0.40, 0.90], R: 0.9, label: 'RING CLUSTER' },      // 3 loose rings
+    { c: [1.30, -0.50, 0.50], n: [1.25, -0.40, 0.90], R: 0.38, label: 'CATALYST' },        // 4 yellow core gear
+    { c: [1.50, -0.60, 0.20], n: [1.20, -0.35, 0.85], R: 0.6, label: 'LATTICE A' },       // 5 blue drum 1
+    { c: [2.32, -1.06, 0.00], n: [1.20, -0.35, 0.8], R: 0.78, label: 'LATTICE B' },       // 6 blue drum 2
+    { c: [1.45, -0.50, -0.20], n: [1.0, -0.30, 1.05], R: 1.5, label: 'HALO' },             // 7 faint gear halo (yellow side)
+    { c: [2.35, -1.02, -0.30], n: [1.1, -0.30, 1.0], R: 1.5, label: 'HALO B' },            // 8 faint gear halo (outer drum)
+    { c: [-1.62, 0.60, -0.30], n: [-0.12, 0.55, 0.85], R: 1.6, label: 'HALO A' }           // 9 big tilted stroke gear (left)
   ];
   var NFRAMES = DISCS.length;
   DISCS.forEach(function (d) {
@@ -93,13 +94,14 @@
      a3 = size, seed, -, -
      a4 = blockHeight, blockPhase, shimmerFreq, -  (blockHeight > 0 => a1.w is a 0..1 fraction) */
   var STRIDE = 20;
+  var BASE_POINTS = 135000; // point count the sprite size and exposure were tuned at
 
   function omega(k, S) { return k * TAU / (S * LOOP); } // pattern has S-fold symmetry => seamless at LOOP
 
   function Builder(density, seed) {
     this.d = density;
     this.rnd = mulberry32(seed || 7);
-    this.buf = [];
+    this.buf = new Float32Array(STRIDE * 262144);   // grows by doubling
     this.count = 0;
   }
   // pseed: shimmer seed, shared by the S copies of a pattern element so the loop closes
@@ -107,10 +109,13 @@
   Builder.prototype.push = function (disc, cx, cz, oc, r, th, om, h, col, a, size, bH, bPh, pseed) {
     var rnd = this.rnd;
     var ps = pseed === undefined ? rnd() : pseed;
-    this.buf.push(disc, cx, cz, oc, r, th, om, h,
-      col[0], col[1], col[2], a,
-      size, rnd(), ps, 0,
-      bH || 0, bPh || 0, 1 + Math.floor(ps * 4999) % 5, 0);
+    var o = this.count * STRIDE, f = this.buf;
+    if (o + STRIDE > f.length) { var g = new Float32Array(f.length * 2); g.set(f); this.buf = f = g; }
+    f[o] = disc; f[o + 1] = cx; f[o + 2] = cz; f[o + 3] = oc;
+    f[o + 4] = r; f[o + 5] = th; f[o + 6] = om; f[o + 7] = h;
+    f[o + 8] = col[0]; f[o + 9] = col[1]; f[o + 10] = col[2]; f[o + 11] = a;
+    f[o + 12] = size; f[o + 13] = rnd(); f[o + 14] = ps; f[o + 15] = 0;
+    f[o + 16] = bH || 0; f[o + 17] = bPh || 0; f[o + 18] = 1 + Math.floor(ps * 4999) % 5; f[o + 19] = 0;
     this.count++;
   };
   // step that thins with density
@@ -240,10 +245,10 @@
       var r = 0.03 + i * (body - 0.03) / 15;
       ring(b, { d: d, r: r, h: dome * (1 - Math.pow(r / body, 2)), S: 8, k: dir * (i % 2 ? 1 : -1) * (1 + (i % 3)),
         spacing: 0.0042, cover: i % 3 === 0 ? 1 : 0.72, arcs: 3,
-        col: i % 5 === 2 ? C.cyan : C.blue, a: 0.9, size: 1.0 });
+        col: i % 4 === 2 ? C.cyan : C.blue, a: 1.0, size: 1.0 });
     }
-    volume(b, { d: d, r0: 0, r1: body, dome: dome, h0: -0.04, h1: 0, S: 8, k: dir, perSector: 300,
-      cols: [C.blue, C.blue, C.deep, C.deep, C.cyan], a: 0.7, size: 1.0 });
+    volume(b, { d: d, r0: 0, r1: body, dome: dome, h0: -0.06, h1: 0, S: 8, k: dir, perSector: 380,
+      cols: [C.blue, C.blue, C.deep, C.cyan], a: 0.8, size: 1.0 });
     volume(b, { d: d, r0: 0, r1: 0.045, h0: dome - 0.02, h1: dome + 0.02, S: 6, k: dir, perSector: 30,
       cols: [C.white, C.ice, C.cyan], a: 0.9, sizes: [1.0, 1.4] });
     volume(b, { d: d, r0: 0.06, r1: body, dome: dome, shell: true, S: 6, k: -dir, perSector: 40,
@@ -273,15 +278,19 @@
   function barrel(b, d, L, Rc, bellLen, bellR) {
     var i, k, h, r;
     // thick hoops
-    for (i = 0; i < 5; i++) {
-      torus(b, { d: d, R: Rc, rm: 0.065, nm: 7, h: -L / 2 + i * L / 4, S: 12, k: i % 2 ? 1 : -1, spacing: 0.006,
-        cover: 0.94, arcs: 3, pseed: 401 + i, cols: [C.cyan, C.cyan, C.ice], a: 1.0 });
+    for (i = 0; i < 4; i++) {
+      torus(b, { d: d, R: Rc + 0.01, rm: 0.085, nm: 10, h: -L / 2 + 0.1 + i * (L - 0.2) / 3, S: 12, k: i % 2 ? 1 : -1, spacing: 0.0055,
+        cover: 0.94, arcs: 3, pseed: 401 + i, cols: [C.cyan, C.cyan, C.blue], a: 1.0 });
     }
     // longitudinal wall lines (colour repeats every 3 lines; the wall turns 3 lines per loop)
-    var nS = 36, st = b.step(0.009);
+    // wall: dense longitudinal lines, broken into dark windows between the hoops
+    var nS = 72, st = b.step(0.008), seg = (L - 0.2) / 3;
     for (k = 0; k < nS; k++) {
       for (h = -L / 2, i = 0; h <= L / 2; h += st, i++) {
-        b.push(d, 0, 0, 0, Rc, k * TAU / nS, omega(3, nS), h, k % 3 ? C.blue : C.cyan, k % 3 ? 0.32 : 0.6, 0.95, 0, 0, (i * 0.618) % 1);
+        var u = (h + L / 2 - 0.1) / seg, fu = u - Math.floor(u);
+        var win = (k % 12) >= 4 && (k % 12) <= 9 && fu > 0.25 && fu < 0.75;   // window opening
+        if (win) continue;
+        b.push(d, 0, 0, 0, Rc, k * TAU / nS, omega(12, nS), h, k % 4 === 0 ? C.cyan : C.blue, k % 4 === 0 ? 0.8 : 0.6, 0.95, 0, 0, (i * 0.618) % 1);
       }
     }
     volume(b, { d: d, r0: Rc * 0.92, r1: Rc, h0: -L / 2, h1: L / 2, S: 12, k: 1, perSector: 120, cols: [C.blue, C.deep], a: 0.45, size: 0.95 });
@@ -290,12 +299,12 @@
     for (k = 0; k < 12; k++) for (h = -L / 2, i = 0; h <= L / 2; h += st * 1.4, i++) {
       b.push(d, 0, 0, 0, Rc * 0.6, k * TAU / 12, omega(1, 12), h, C.ice, 0.3, 0.9, 0, 0, (i * 0.382) % 1);
     }
-    for (i = 0; i < 5; i++) {
-      dashes(b, { d: d, r0: Rc * 0.6, r1: Rc * 0.6, len: [Rc * 0.38, Rc * 0.38], perSector: 1, S: 8, k: i % 2 ? 1 : -1, h: -L / 2 + i * L / 4,
+    for (i = 0; i < 4; i++) {
+      dashes(b, { d: d, r0: Rc * 0.6, r1: Rc * 0.6, len: [Rc * 0.38, Rc * 0.38], perSector: 1, S: 8, k: i % 2 ? 1 : -1, h: -L / 2 + 0.1 + i * (L - 0.2) / 3,
         spacing: 0.006, dir: 'radial', col: C.white, a: 0.75, size: 0.95 });
     }
     // right end cap: heavy rim, inner rings and little loops
-    torus(b, { d: d, R: Rc + 0.01, rm: 0.07, nm: 8, h: L / 2 + 0.02, S: 12, k: -1, spacing: 0.006, cover: 1, cols: [C.cyan, C.ice, C.cyan], a: 1.0 });
+    torus(b, { d: d, R: Rc + 0.02, rm: 0.09, nm: 12, h: L / 2 + 0.03, S: 12, k: -1, spacing: 0.0055, cover: 1, cols: [C.cyan, C.cyan, C.ice], a: 1.0 });
     [0.1, 0.17, 0.26].forEach(function (rr, j) {
       ring(b, { d: d, r: rr, h: L / 2, S: 8, k: j % 2 ? 1 : -1, spacing: 0.005, cover: 0.85, arcs: 2, col: C.white, a: 0.85, size: 1.0 });
     });
@@ -321,10 +330,10 @@
   /* yellow-core gear disc */
   function yellowDisc(b, d, R) {
     volume(b, { d: d, r0: 0, r1: 0.11, dome: 0.07, S: 6, k: 1, perSector: 110, cols: [C.yellow, C.olive, C.olive, C.amber], a: 0.8, sizes: [1.0, 1.3] });
-    for (var i = 0; i < 12; i++) {
-      var r = 0.13 + i * 0.022;
+    for (var i = 0; i < 10; i++) {
+      var r = 0.12 + i * 0.02;
       ring(b, { d: d, r: r, h: 0.05 * (1 - r / R), S: 10, k: i % 2 ? 1 : -1, spacing: 0.005, cover: i % 4 === 0 ? 1 : 0.75, arcs: 3,
-        col: i % 3 === 1 ? C.yellow : C.olive, a: 0.65, size: 0.95 });
+        col: i % 3 === 1 ? C.yellow : C.olive, a: 0.8, size: 0.95 });
     }
     torus(b, { d: d, R: R * 0.62, rm: 0.025, nm: 5, S: 10, k: -1, spacing: 0.005, cover: 1, col: C.olive, a: 0.85 });
     dashes(b, { d: d, r0: R * 0.66, r1: R * 0.66, len: [0.06, 0.06], perSector: 1, S: 28, k: 1, spacing: 0.005, dir: 'radial', col: C.yellow, a: 0.85, size: 1.0 });
@@ -335,9 +344,12 @@
   /* solid blue drum covered in blocks, with a hot cyan core */
   function blockDrum(b, d, R, maxH, k, bias) {
     blockDisc(b, d, 0.12, R, 6, k, maxH, bias);
-    volume(b, { d: d, r0: 0.08, r1: R, h0: -0.22, h1: 0, S: 6, k: k, perSector: 950, cols: [C.deep, C.blue, C.blue], a: 0.62, size: 1.0 });
-    torus(b, { d: d, R: R + 0.02, rm: 0.1, nm: 7, h: -0.1, S: 6, k: k, spacing: 0.007, cover: 0.85, arcs: 3, pseed: 501, cols: [C.blue, C.deep, C.cyan], a: 0.7 });
-    volume(b, { d: d, r0: 0, r1: 0.13, h0: 0, h1: 0.05, dome: 0.22, S: 6, k: k, perSector: 90, cols: [C.cyan, C.cyan, C.ice], a: 0.85, sizes: [1.1, 1.6] });
+    volume(b, { d: d, r0: 0.08, r1: R, h0: -0.36, h1: 0, S: 6, k: k, perSector: 1150, cols: [C.deep, C.blue, C.blue], a: 0.6, size: 1.0 });
+    volume(b, { d: d, r0: R * 0.86, r1: R + 0.02, h0: -0.36, h1: 0, S: 6, k: k, perSector: 900, cols: [C.blue, C.blue, C.cyan], a: 0.7, size: 1.0 });
+    ring(b, { d: d, r: R + 0.01, h: -0.36, S: 6, k: k, spacing: 0.0065, cover: 1, col: C.blue, a: 0.7, size: 0.95 });
+    torus(b, { d: d, R: R * 0.55, rm: 0.03, nm: 5, h: -0.36, S: 6, k: -k, spacing: 0.007, cover: 0.8, arcs: 3, pseed: 541, col: C.deep, a: 0.6 });
+    torus(b, { d: d, R: R + 0.03, rm: 0.05, nm: 6, h: 0.0, S: 6, k: k, spacing: 0.0065, cover: 0.9, arcs: 3, pseed: 501, cols: [C.cyan, C.blue, C.cyan], a: 0.85 });
+    volume(b, { d: d, r0: 0, r1: 0.17, h0: 0, h1: 0.06, dome: 0.26, S: 6, k: k, perSector: 200, cols: [C.cyan, C.cyan, C.ice], a: 1.0, sizes: [1.2, 1.8] });
     volume(b, { d: d, r0: R + 0.05, r1: R + 0.32, h0: -0.04, h1: 0.04, S: 12, k: -k, perSector: 55, cols: [C.cyan, C.blue, C.white], a: 0.6, size: 0.95 });
   }
 
@@ -454,10 +466,10 @@
       var r = 0.03 + i * (body - 0.03) / 15;
       ring(b, { d: d, r: r, h: dome * (1 - Math.pow(r / body, 2)), S: 8, k: dir * (i % 2 ? 1 : -1) * (1 + (i % 3)),
         spacing: 0.0042, cover: i % 3 === 0 ? 1 : 0.72, arcs: 3,
-        col: i % 5 === 2 ? C.cyan : C.blue, a: 0.9, size: 1.0 });
+        col: i % 4 === 2 ? C.cyan : C.blue, a: 1.0, size: 1.0 });
     }
-    volume(b, { d: d, r0: 0, r1: body, dome: dome, h0: -0.04, h1: 0, S: 8, k: dir, perSector: 300,
-      cols: [C.blue, C.blue, C.deep, C.deep, C.cyan], a: 0.7, size: 1.0 });
+    volume(b, { d: d, r0: 0, r1: body, dome: dome, h0: -0.06, h1: 0, S: 8, k: dir, perSector: 380,
+      cols: [C.blue, C.blue, C.deep, C.cyan], a: 0.8, size: 1.0 });
     volume(b, { d: d, r0: 0, r1: 0.045, h0: dome - 0.02, h1: dome + 0.02, S: 6, k: dir, perSector: 30,
       cols: [C.white, C.ice, C.cyan], a: 0.9, sizes: [1.0, 1.4] });
     volume(b, { d: d, r0: 0.06, r1: body, dome: dome, shell: true, S: 6, k: -dir, perSector: 40,
@@ -487,15 +499,19 @@
   function barrel(b, d, L, Rc, bellLen, bellR) {
     var i, k, h, r;
     // thick hoops
-    for (i = 0; i < 5; i++) {
-      torus(b, { d: d, R: Rc, rm: 0.065, nm: 7, h: -L / 2 + i * L / 4, S: 12, k: i % 2 ? 1 : -1, spacing: 0.006,
-        cover: 0.94, arcs: 3, pseed: 401 + i, cols: [C.cyan, C.cyan, C.ice], a: 1.0 });
+    for (i = 0; i < 4; i++) {
+      torus(b, { d: d, R: Rc + 0.01, rm: 0.085, nm: 10, h: -L / 2 + 0.1 + i * (L - 0.2) / 3, S: 12, k: i % 2 ? 1 : -1, spacing: 0.0055,
+        cover: 0.94, arcs: 3, pseed: 401 + i, cols: [C.cyan, C.cyan, C.blue], a: 1.0 });
     }
     // longitudinal wall lines (colour repeats every 3 lines; the wall turns 3 lines per loop)
-    var nS = 36, st = b.step(0.009);
+    // wall: dense longitudinal lines, broken into dark windows between the hoops
+    var nS = 72, st = b.step(0.008), seg = (L - 0.2) / 3;
     for (k = 0; k < nS; k++) {
       for (h = -L / 2, i = 0; h <= L / 2; h += st, i++) {
-        b.push(d, 0, 0, 0, Rc, k * TAU / nS, omega(3, nS), h, k % 3 ? C.blue : C.cyan, k % 3 ? 0.32 : 0.6, 0.95, 0, 0, (i * 0.618) % 1);
+        var u = (h + L / 2 - 0.1) / seg, fu = u - Math.floor(u);
+        var win = (k % 12) >= 4 && (k % 12) <= 9 && fu > 0.25 && fu < 0.75;   // window opening
+        if (win) continue;
+        b.push(d, 0, 0, 0, Rc, k * TAU / nS, omega(12, nS), h, k % 4 === 0 ? C.cyan : C.blue, k % 4 === 0 ? 0.8 : 0.6, 0.95, 0, 0, (i * 0.618) % 1);
       }
     }
     volume(b, { d: d, r0: Rc * 0.92, r1: Rc, h0: -L / 2, h1: L / 2, S: 12, k: 1, perSector: 120, cols: [C.blue, C.deep], a: 0.45, size: 0.95 });
@@ -504,12 +520,12 @@
     for (k = 0; k < 12; k++) for (h = -L / 2, i = 0; h <= L / 2; h += st * 1.4, i++) {
       b.push(d, 0, 0, 0, Rc * 0.6, k * TAU / 12, omega(1, 12), h, C.ice, 0.3, 0.9, 0, 0, (i * 0.382) % 1);
     }
-    for (i = 0; i < 5; i++) {
-      dashes(b, { d: d, r0: Rc * 0.6, r1: Rc * 0.6, len: [Rc * 0.38, Rc * 0.38], perSector: 1, S: 8, k: i % 2 ? 1 : -1, h: -L / 2 + i * L / 4,
+    for (i = 0; i < 4; i++) {
+      dashes(b, { d: d, r0: Rc * 0.6, r1: Rc * 0.6, len: [Rc * 0.38, Rc * 0.38], perSector: 1, S: 8, k: i % 2 ? 1 : -1, h: -L / 2 + 0.1 + i * (L - 0.2) / 3,
         spacing: 0.006, dir: 'radial', col: C.white, a: 0.75, size: 0.95 });
     }
     // right end cap: heavy rim, inner rings and little loops
-    torus(b, { d: d, R: Rc + 0.01, rm: 0.07, nm: 8, h: L / 2 + 0.02, S: 12, k: -1, spacing: 0.006, cover: 1, cols: [C.cyan, C.ice, C.cyan], a: 1.0 });
+    torus(b, { d: d, R: Rc + 0.02, rm: 0.09, nm: 12, h: L / 2 + 0.03, S: 12, k: -1, spacing: 0.0055, cover: 1, cols: [C.cyan, C.cyan, C.ice], a: 1.0 });
     [0.1, 0.17, 0.26].forEach(function (rr, j) {
       ring(b, { d: d, r: rr, h: L / 2, S: 8, k: j % 2 ? 1 : -1, spacing: 0.005, cover: 0.85, arcs: 2, col: C.white, a: 0.85, size: 1.0 });
     });
@@ -535,10 +551,10 @@
   /* yellow-core gear disc */
   function yellowDisc(b, d, R) {
     volume(b, { d: d, r0: 0, r1: 0.11, dome: 0.07, S: 6, k: 1, perSector: 110, cols: [C.yellow, C.olive, C.olive, C.amber], a: 0.8, sizes: [1.0, 1.3] });
-    for (var i = 0; i < 12; i++) {
-      var r = 0.13 + i * 0.022;
+    for (var i = 0; i < 10; i++) {
+      var r = 0.12 + i * 0.02;
       ring(b, { d: d, r: r, h: 0.05 * (1 - r / R), S: 10, k: i % 2 ? 1 : -1, spacing: 0.005, cover: i % 4 === 0 ? 1 : 0.75, arcs: 3,
-        col: i % 3 === 1 ? C.yellow : C.olive, a: 0.65, size: 0.95 });
+        col: i % 3 === 1 ? C.yellow : C.olive, a: 0.8, size: 0.95 });
     }
     torus(b, { d: d, R: R * 0.62, rm: 0.025, nm: 5, S: 10, k: -1, spacing: 0.005, cover: 1, col: C.olive, a: 0.85 });
     dashes(b, { d: d, r0: R * 0.66, r1: R * 0.66, len: [0.06, 0.06], perSector: 1, S: 28, k: 1, spacing: 0.005, dir: 'radial', col: C.yellow, a: 0.85, size: 1.0 });
@@ -549,9 +565,12 @@
   /* solid blue drum covered in blocks, with a hot cyan core */
   function blockDrum(b, d, R, maxH, k, bias) {
     blockDisc(b, d, 0.12, R, 6, k, maxH, bias);
-    volume(b, { d: d, r0: 0.08, r1: R, h0: -0.22, h1: 0, S: 6, k: k, perSector: 950, cols: [C.deep, C.blue, C.blue], a: 0.62, size: 1.0 });
-    torus(b, { d: d, R: R + 0.02, rm: 0.1, nm: 7, h: -0.1, S: 6, k: k, spacing: 0.007, cover: 0.85, arcs: 3, pseed: 501, cols: [C.blue, C.deep, C.cyan], a: 0.7 });
-    volume(b, { d: d, r0: 0, r1: 0.13, h0: 0, h1: 0.05, dome: 0.22, S: 6, k: k, perSector: 90, cols: [C.cyan, C.cyan, C.ice], a: 0.85, sizes: [1.1, 1.6] });
+    volume(b, { d: d, r0: 0.08, r1: R, h0: -0.36, h1: 0, S: 6, k: k, perSector: 1150, cols: [C.deep, C.blue, C.blue], a: 0.6, size: 1.0 });
+    volume(b, { d: d, r0: R * 0.86, r1: R + 0.02, h0: -0.36, h1: 0, S: 6, k: k, perSector: 900, cols: [C.blue, C.blue, C.cyan], a: 0.7, size: 1.0 });
+    ring(b, { d: d, r: R + 0.01, h: -0.36, S: 6, k: k, spacing: 0.0065, cover: 1, col: C.blue, a: 0.7, size: 0.95 });
+    torus(b, { d: d, R: R * 0.55, rm: 0.03, nm: 5, h: -0.36, S: 6, k: -k, spacing: 0.007, cover: 0.8, arcs: 3, pseed: 541, col: C.deep, a: 0.6 });
+    torus(b, { d: d, R: R + 0.03, rm: 0.05, nm: 6, h: 0.0, S: 6, k: k, spacing: 0.0065, cover: 0.9, arcs: 3, pseed: 501, cols: [C.cyan, C.blue, C.cyan], a: 0.85 });
+    volume(b, { d: d, r0: 0, r1: 0.17, h0: 0, h1: 0.06, dome: 0.26, S: 6, k: k, perSector: 200, cols: [C.cyan, C.cyan, C.ice], a: 1.0, sizes: [1.2, 1.8] });
     volume(b, { d: d, r0: R + 0.05, r1: R + 0.32, h0: -0.04, h1: 0.04, S: 12, k: -k, perSector: 55, cols: [C.cyan, C.blue, C.white], a: 0.6, size: 0.95 });
   }
 
@@ -616,9 +635,9 @@
     var b = new Builder(density, 20251010);
 
     /* 0 – big faint gear of white strokes + rosette 1 with its corona of loops */
-    strokeGear(b, 0, [[0.66, 0.07, 5], [0.86, 0.11, 6], [1.08, 0.14, 7], [1.32, 0.16, 8], [1.52, 0.09, 6]], 12, 0.68);
-    dashes(b, { d: 0, r0: 1.66, r1: 1.66, len: [0.05, 0.05], perSector: 1, S: 96, k: -1, spacing: 0.006, dir: 'radial', col: C.grey, a: 0.55, size: 0.95 });
-    volume(b, { d: 0, r0: 0.6, r1: 1.65, h0: -0.05, h1: 0.05, S: 12, k: 1, perSector: 80, cols: [C.grey, C.grey, C.ice], a: 0.35, size: 0.9 });
+    strokeGear(b, 9, [[0.66, 0.07, 5], [0.86, 0.11, 6], [1.08, 0.14, 7], [1.32, 0.16, 8], [1.52, 0.09, 6]], 12, 0.68);
+    dashes(b, { d: 9, r0: 1.66, r1: 1.66, len: [0.05, 0.05], perSector: 1, S: 96, k: -1, spacing: 0.006, dir: 'radial', col: C.grey, a: 0.55, size: 0.95 });
+    volume(b, { d: 9, r0: 0.6, r1: 1.65, h0: -0.05, h1: 0.05, S: 12, k: 1, perSector: 80, cols: [C.grey, C.grey, C.ice], a: 0.35, size: 0.9 });
     rosette3d(b, 0, 0.52, 1, true);
 
     /* 1 – rosette 2 (face of the bell) */
@@ -645,8 +664,7 @@
     loops(b, { d: 7, seed: 13, n: 18, r0: 0.6, r1: 1.6, rad: [0.025, 0.06], hj: 0.3, cols: [C.white, C.grey, C.ice], a: 0.7 });
     volume(b, { d: 7, r0: 0.7, r1: 1.7, h0: -0.15, h1: 0.15, S: 12, k: 1, perSector: 60, cols: [C.grey, C.grey, C.ice], a: 0.3, size: 0.9 });
 
-    var data = new Float32Array(b.buf);
-    return { data: data, count: b.count };
+    return { data: b.buf.subarray(0, b.count * STRIDE), count: b.count };
   }
 
   /* ---------- shaders ---------- */
@@ -660,7 +678,7 @@
     'layout(location=4) in vec4 a4;',
     'uniform mat4 uViewProj;',
     'uniform vec3 uCamPos;',
-    'uniform vec3 uDC[9]; uniform vec3 uDU[9]; uniform vec3 uDV[9]; uniform vec3 uDN[9];',
+    'uniform vec3 uDC[10]; uniform vec3 uDU[10]; uniform vec3 uDV[10]; uniform vec3 uDN[10];',
     'uniform float uTime;',      // 0..16 loop time
     'uniform float uIntro;',     // 0..1
     'uniform float uPx;',        // device px per world unit at distance 1
@@ -753,9 +771,10 @@
   // geometry is built once at full density; the point budget is applied in the vertex
   // shader by keeping a fraction of pattern elements (all S copies of an element share
   // its seed, so the kept subset stays symmetric and the 16 s loop still closes)
-  DiscStack.prototype.build = function (budget) {
+  // density 1 = the calibrated look (~135k points); higher densities add points everywhere
+  DiscStack.prototype.build = function (budget, density) {
     var gl = this.gl;
-    var geo = buildStack(1);
+    var geo = buildStack(density || 1);
     this.total = geo.count;
     this.full = Math.min(this.total, budget);   // reference count: points grow when the budget drops
     this.setBudget(budget);
@@ -772,7 +791,7 @@
   DiscStack.prototype.setBudget = function (budget) {
     this.count = Math.min(this.total, budget);
     this.keep = this.count / this.total;
-    this.density = this.count / this.full;
+    this.density = this.count / BASE_POINTS;
   };
 
   /* ---------- glow: points -> scene texture -> quarter-res blur -> scene + glow ---------- */
@@ -804,7 +823,7 @@
     'uniform sampler2D uScene; uniform sampler2D uGlow; uniform sampler2D uGlow2; uniform float uGain;',
     'void main(){',
     '  vec3 s = texture(uScene, vUv).rgb;',
-    '  vec3 g = texture(uGlow, vUv).rgb * 0.9 + texture(uGlow2, vUv).rgb * 0.45;',
+    '  vec3 g = texture(uGlow, vUv).rgb * 1.05 + texture(uGlow2, vUv).rgb * 0.22;',
     '  vec3 c = s * 1.08 + g * uGain;',
     '  c = vec3(1.0) - exp(-c * 1.35);',       // soft shoulder so dense cores stay blue, not flat white
     '  o = vec4(c, 1.0);',
@@ -893,7 +912,7 @@
     gl.uniform1f(u.uIntro, intro);
     gl.uniform1f(u.uKeep, this.keep);
     gl.uniform1f(u.uPx, cam.pxPerUnit);
-    gl.uniform1f(u.uSize, 0.0122 / Math.sqrt(Math.max(0.25, this.density)));
+    gl.uniform1f(u.uSize, 0.0122 / Math.sqrt(Math.max(0.25, Math.min(6, this.density))));
     gl.uniform1f(u.uMaxPx, 9 * pr);
     var dc = [], du = [], dv = [], dn = [];
     cam.discs.forEach(function (d) { dc.push.apply(dc, d.c); du.push.apply(du, d.u); dv.push.apply(dv, d.v); dn.push.apply(dn, d.n); });
@@ -912,7 +931,7 @@
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, g1.tex);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, g2.tex);
     gl.uniform1i(this.cu.scene, 0); gl.uniform1i(this.cu.glow, 1); gl.uniform1i(this.cu.glow2, 2);
-    gl.uniform1f(this.cu.gain, 1.2);
+    gl.uniform1f(this.cu.gain, 1.45);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindVertexArray(null);
