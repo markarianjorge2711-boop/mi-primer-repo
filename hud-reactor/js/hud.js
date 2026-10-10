@@ -69,44 +69,19 @@
   /* ---------- panels (fractions of the landscape frame) ----------
      frame: 'cap' = top line + right drop, 'box' = full rectangle, 'none' */
   var PANELS = [
-    // left column: loose parameter lines in groups
-    { type: 'params', x: 0.042, y: 0.085, w: 0.12, rows: 1 },
-    { type: 'params', x: 0.042, y: 0.108, w: 0.12, rows: 8, tag: 'ACTIVE' },
-    { type: 'params', x: 0.042, y: 0.215, w: 0.13, rows: 13, tag: 'RANGE' },
-    { type: 'params', x: 0.042, y: 0.385, w: 0.12, rows: 5, tag: 'BUS-2' },
-    { type: 'params', x: 0.042, y: 0.455, w: 0.12, rows: 6, tag: 'BANKS', red: 2 },
-    { type: 'params', x: 0.042, y: 0.535, w: 0.10, rows: 3 },
-    { type: 'params', x: 0.042, y: 0.585, w: 0.10, rows: 4 },
-    { type: 'para', title: 'PHYSICAL', x: 0.045, y: 0.648, w: 0.115, rows: 3, cols2: true, frame: 'cap' },
-    { type: 'para', title: 'CATALYST', x: 0.172, y: 0.648, w: 0.045, rows: 1, frame: 'none' },
-
-    // top band
-    { type: 'arcs', title: 'CHEMICAL', x: 0.365, y: 0.075, w: 0.115, rows: 3, frame: 'cap' },
-    { type: 'para', title: 'CATALYST', x: 0.49, y: 0.075, w: 0.03, rows: 1, frame: 'none' },
-    { type: 'table', title: 'LOAD CONTROLLERS', x: 0.527, y: 0.075, w: 0.14, rows: 5, cols: 5, accent: true, frame: 'none' },
-    { type: 'gaugeRow', x: 0.527, y: 0.178, w: 0.14, n: 5 },
-    { type: 'help', title: 'HELP', x: 0.675, y: 0.072, w: 0.12, rows: 4, frame: 'box' },
-    { type: 'table', title: 'REACTOR COOLING CONTROL', x: 0.675, y: 0.165, w: 0.115, rows: 4, cols: 7, frame: 'none' },
-    { type: 'table', title: 'SEARCH FOR', x: 0.8, y: 0.075, w: 0.075, rows: 6, cols: 3, frame: 'none' },
-    { type: 'table', title: 'SEARCH FOR', x: 0.8, y: 0.165, w: 0.075, rows: 4, cols: 3, frame: 'none' },
-    { type: 'rings2', title: 'CONTROLS', x: 0.905, y: 0.075, w: 0.07, frame: 'none' },
-    { type: 'table', title: 'AUTOMATIC CONTROL', x: 0.905, y: 0.165, w: 0.07, rows: 4, cols: 3, frame: 'none', red: 1 },
-
-    // right column
-    { type: 'controlOf', title: 'CONTROL OF', x: 0.905, y: 0.255, w: 0.07, h: 0.45, frame: 'none' },
-    { type: 'arcs', title: 'CHEMICAL', x: 0.85, y: 0.775, w: 0.085, rows: 2, frame: 'cap' },
-    { type: 'para', title: 'CATALYST', x: 0.945, y: 0.775, w: 0.03, rows: 2, frame: 'none' },
-    { type: 'para', title: 'PHYSICAL', x: 0.85, y: 0.865, w: 0.085, rows: 2, frame: 'cap' },
-    { type: 'para', title: 'CATALYST', x: 0.945, y: 0.865, w: 0.03, rows: 2, frame: 'none' },
-
-    // bottom band
-    { type: 'para', title: 'REACTOR COOLING CONTROL', x: 0.045, y: 0.772, w: 0.15, rows: 4, frame: 'cap' },
-    { type: 'para', title: 'SEARCH FOR', x: 0.205, y: 0.772, w: 0.085, rows: 4, frame: 'cap' },
-    { type: 'para', title: 'AUTOMATIC CONTROL', x: 0.3, y: 0.772, w: 0.075, rows: 4, frame: 'cap' },
-    { type: 'gaugeBars', x: 0.385, y: 0.772, w: 0.14, n: 5, h: 0.16 },
-    { type: 'hbars', title: 'REACTOR COOLING CONTROL', x: 0.045, y: 0.865, w: 0.105, rows: 5, frame: 'none' },
-    { type: 'table', title: 'SEARCH FOR', x: 0.16, y: 0.865, w: 0.13, rows: 5, cols: 5, frame: 'none' },
-    { type: 'table', title: 'AUTOMATIC CONTROL', x: 0.3, y: 0.865, w: 0.075, rows: 5, cols: 4, frame: 'none' }
+    // left column: parameter lines
+    { type: 'params', x: 0.035, y: 0.085, w: 0.135, rows: 9, tag: 'ACTIVE' },
+    { type: 'params', x: 0.035, y: 0.31, w: 0.135, rows: 6, tag: 'RANGE', red: 3 },
+    // bottom left band
+    { type: 'hbars', title: 'REACTOR COOLING CONTROL', x: 0.035, y: 0.775, w: 0.15, rows: 5, frame: 'cap' },
+    { type: 'gaugeBars', x: 0.215, y: 0.765, w: 0.17, n: 4, h: 0.17 },
+    // top right band
+    { type: 'table', title: 'LOAD CONTROLLERS', x: 0.555, y: 0.07, w: 0.17, rows: 4, cols: 5, accent: true, frame: 'none' },
+    { type: 'table', title: 'AUTOMATIC CONTROL', x: 0.755, y: 0.07, w: 0.12, rows: 4, cols: 3, frame: 'none', red: 1 },
+    { type: 'rings2', title: 'CONTROLS', x: 0.9, y: 0.07, w: 0.075, frame: 'none' },
+    // right column, bottom
+    { type: 'arcs', title: 'CHEMICAL', x: 0.845, y: 0.8, w: 0.125, rows: 2, frame: 'cap' },
+    { type: 'para', title: 'PHYSICAL', x: 0.845, y: 0.885, w: 0.125, rows: 2, frame: 'cap' }
   ];
 
   function linesFor(p, lh, LH) {
@@ -129,7 +104,7 @@
     this.x = p.x * LW; this.y = p.y * LH; this.w = p.w * LW; this.lh = lh;
     this.lines = linesFor(p, lh, LH);
     this.h = this.lines * lh;
-    this.fs = Math.max(6, lh * 0.64);
+    this.fs = Math.max(9, lh * 0.66);
     this.dyn = [];
     this.rnd = rng(seed);
     this.revealStart = 0; this.revealDur = 0.5;
@@ -188,7 +163,7 @@
         title(0);
         var top = 1;
         if (p.accent) {
-          ctx.fillStyle = COL.teal; ctx.fillRect(w * 0.12, lh * 0.35, w * 0.88, 1.6);
+          ctx.fillStyle = COL.teal; ctx.fillRect(0, lh * 1.02, w, 1.6);
           ctx.fillStyle = COL.dim;
           for (j = 1; j < p.cols; j++) text(ctx, 'UNIT_' + String.fromCharCode(64 + j) + '.' + j, w * (0.1 + 0.9 * j / p.cols), self.base(1));
           top = 2;
@@ -256,7 +231,7 @@
         var bw = w / p.n, hB = this.h;
         font(ctx, fs * 0.92, 400);
         ctx.fillStyle = COL.white;
-        text(ctx, 'CONTROL_A  |  CONTROL_B  |  CONTROL_C  |  CONTROL_D', 0, self.base(0));
+        text(ctx, 'CONTROL A   B   C   D', 0, self.base(0));
         ctx.fillStyle = COL.line; ctx.fillRect(0, lh * 1.05, w, 0.6);
         for (i = 0; i < p.n; i++) {
           var bx = bw * (i + 0.5);
@@ -270,7 +245,7 @@
         }
         ctx.fillStyle = COL.line; ctx.fillRect(0, hB - lh * 1.2, w, 0.6);
         ctx.fillStyle = COL.text;
-        text(ctx, 'PARAMETER TIMING OF TEMPERATURE', w * 0.12, self.base(this.lines - 1));
+        text(ctx, 'TEMPERATURE TIMING', 0, self.base(this.lines - 1));
         text(ctx, 'A/B ANALYSIS', w, self.base(this.lines - 1), 'right');
         break;
       }
@@ -388,7 +363,7 @@
     this.ctx.__s = pr;
     this.u = LH / 900;
     this.m = Math.round(9 * this.u) + 4;
-    var lh = Math.max(9, LH * 0.0122);
+    var lh = Math.max(13, LH * 0.0175);   // readable: about 11 px text on a 900 px tall screen
     var self = this;
     this.blocks = PANELS.map(function (p, i) { return new Block(p, LW, LH, lh, pr, 11 + i * 7); });
     // intro stagger: outside-in by distance from the screen centre

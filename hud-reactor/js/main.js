@@ -10,7 +10,7 @@
   var params = new URLSearchParams(location.search);
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var timeScale = reduced ? 0.25 : 1;
-  var BUDGET = 60000;
+  var BUDGET = 140000; // lowered automatically (halved, up to twice) if frames run long
 
   var stack = null;
   try { stack = new R.DiscStack(glCanvas); stack.build(BUDGET); }
@@ -35,8 +35,8 @@
   window.addEventListener('resize', layout);
   layout();
 
-  var CAM_DIST = 8.0;
-  var TARGET = [0.0, 0.0, 0.0];
+  var CAM_DIST = 8.7;
+  var TARGET = [0.05, -0.32, 0.0];
 
   function camera(t) {
     // slow breathing of the viewing angle, a few degrees, closes on the loop
@@ -99,12 +99,13 @@
       if (perf.samples.length >= 90 || (perf.samples.length >= 12 && sum > 2500)) {
         var s = perf.samples.slice().sort(function (a, b) { return a - b; });
         perf.measuredMs = s[s.length >> 1];
-        if (perf.measuredMs > 20) {
+        perf.samples = [];
+        perf.halvings = perf.halvings || 0;
+        if (perf.measuredMs > 20 && perf.halvings < 2) {
           stack.setBudget(Math.floor(stack.count / 2));
           perf.halved = true;
-        }
-        perf.samples = [];
-        perf.checked = true;
+          perf.halvings++;            // measure again at the new budget
+        } else perf.checked = true;
       }
     }
     perf.points = stack ? stack.count : 0;
