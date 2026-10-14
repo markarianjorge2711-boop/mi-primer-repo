@@ -485,10 +485,10 @@ const IS_MOBILE = window.matchMedia('(pointer: coarse)').matches && Math.min(scr
 const URLP = new URLSearchParams(location.search);
 
 const TIERS = {
-  ultra:  { label: 'Ultra',  stars: 1000000, dust: 46000, knots: 260, bg: 26000, dpr: 2,   bloomScale: 1.0,  bhSteps: 320, coll: 362, sky: 1024 },
-  high:   { label: 'High',   stars: 550000, dust: 34000, knots: 220, bg: 18000, dpr: 2,   bloomScale: 0.75, bhSteps: 220, coll: 320, sky: 1024 },
-  medium: { label: 'Medium', stars: 260000, dust: 22000, knots: 160, bg: 12000,  dpr: 1.5, bloomScale: 0.6,  bhSteps: 150, coll: 288, sky: 512 },
-  low:    { label: 'Low',    stars: 120000, dust: 13000, knots: 110, bg: 8000,  dpr: 1,   bloomScale: 0.5,  bhSteps: 100, coll: 256, sky: 512 },
+  ultra:  { label: 'Ultra',  stars: 1000000, dust: 46000, knots: 260, bg: 26000, dpr: 2,   bloomScale: 1.0,  bhSteps: 320, coll: 362, sky: 1024, env: 384 },
+  high:   { label: 'High',   stars: 550000, dust: 34000, knots: 220, bg: 18000, dpr: 2,   bloomScale: 0.75, bhSteps: 220, coll: 320, sky: 1024, env: 256 },
+  medium: { label: 'Medium', stars: 260000, dust: 22000, knots: 160, bg: 12000,  dpr: 1.5, bloomScale: 0.6,  bhSteps: 150, coll: 288, sky: 512, env: 256 },
+  low:    { label: 'Low',    stars: 120000, dust: 13000, knots: 110, bg: 8000,  dpr: 1,   bloomScale: 0.5,  bhSteps: 100, coll: 256, sky: 512, env: 192 },
 };
 const TIER_ORDER = ['low', 'medium', 'high', 'ultra'];
 const MAXC = IS_MOBILE ? { stars: 300000, dust: 22000, knots: 160, bg: 12000 } : { stars: 1000000, dust: 46000, knots: 260, bg: 26000 };
@@ -901,10 +901,10 @@ async function boot() {
   starGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 120);
 
   const starMat = new THREE.ShaderMaterial({
-    uniforms: { ...GU, uGain: { value: 1 } },
+    uniforms: { ...GU, uGain: { value: 1 }, uSpikes: { value: 1 } },
     vertexShader: /* glsl */`
       ${GLSL_GALAXY}
-      uniform float uPixScale; uniform float uMinPx; uniform float uGain; uniform float uCoreClear; uniform float uNearFade;
+      uniform float uPixScale; uniform float uMinPx; uniform float uGain; uniform float uCoreClear; uniform float uNearFade; uniform float uSpikes;
       attribute vec4 aP; attribute vec4 aQ; attribute vec4 aCol;
       varying vec3 vCol; varying float vI; varying float vK; varying float vHalf;
       vec3 inclined(float a, float ang, float inc, float node){
@@ -954,7 +954,7 @@ async function boot() {
         if (kind > 4.5) fade *= clamp(pow(12.0/dist, 1.5), 0.02, 1.0);
         else if (kind > 1.5 && kind < 2.5) fade *= clamp(pow(22.0/dist, 0.8), 0.22, 1.0);
         float I = abs(aP.w)*uGain*fade;
-        float spike = aP.w < 0.0 ? 1.0 : 0.0;
+        float spike = aP.w < 0.0 ? uSpikes : 0.0;   // spikes are a camera artefact: off for the 360° capture
         float raw = aP.z*uPixScale/max(dist, 1e-3);
         float core = clamp(raw, uMinPx, uMinPx*2.4);        // size attenuation, bounded: stars stay point-like
         core *= 0.82 + 0.5*clamp(abs(aP.w)*1.4, 0.0, 1.0);  // photographic look: brighter stars render slightly larger
@@ -1286,7 +1286,11 @@ async function boot() {
       uCam: { value: new THREE.Vector3(0, 0, 1000) },
       uN: { value: new THREE.Vector3(0, 1, 0) }, uU: { value: new THREE.Vector3(1, 0, 0) }, uW: { value: new THREE.Vector3(0, 0, 1) },
       uDiskFade: { value: 0 }, uTime: { value: 0 }, uDir: { value: 1 }, uTin: { value: 16000 },
-      uJets: { value: 1 }, uOmega: { value: 2.2 }, uGalGlow: { value: 0.02 }, uSteps: { value: 220 }, uDiskGain: { value: 4.6 },
+      uJets: { value: 1 }, uOmega: { value: 2.2 }, uSteps: { value: 220 }, uDiskGain: { value: 4.6 }, uCorona: { value: 0.06 },
+      // high-quality surroundings: 360° capture of the real galaxy + procedural resolved stars
+      uGalCube: { value: null }, uCubeMix: { value: 0 }, uCubeGain: { value: 1 }, uTexelAng: { value: 0.0015 }, uPixAng: { value: 0.0009 },
+      uDeepStars: { value: 0 }, uNscMix: { value: 0 }, uNscTan: { value: 0.01 }, uNscGlow: { value: 1.2 },
+      uNscC: { value: new THREE.Vector3(0, 0, -1) }, uNscE1: { value: new THREE.Vector3(1, 0, 0) }, uNscE2: { value: new THREE.Vector3(0, 1, 0) },
     },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }`,
     fragmentShader: /* glsl */`
@@ -1295,7 +1299,10 @@ async function boot() {
       uniform mat4 uInvProj; uniform mat4 uCamWorld; uniform mat4 uProj; uniform mat4 uView;
       uniform vec3 uCam; uniform vec3 uN; uniform vec3 uU; uniform vec3 uW;
       uniform float uDiskFade; uniform float uTime; uniform float uDir; uniform float uTin;
-      uniform float uJets; uniform float uOmega; uniform float uGalGlow; uniform int uSteps; uniform float uDiskGain;
+      uniform float uJets; uniform float uOmega; uniform int uSteps; uniform float uDiskGain; uniform float uCorona;
+      uniform samplerCube uGalCube; uniform float uCubeMix; uniform float uCubeGain; uniform float uTexelAng; uniform float uPixAng;
+      uniform float uDeepStars; uniform float uNscMix; uniform float uNscTan; uniform float uNscGlow;
+      uniform vec3 uNscC; uniform vec3 uNscE1; uniform vec3 uNscE2;
       varying vec2 vUv;
       #define RM 30.0
       #define RIN 3.0
@@ -1306,26 +1313,93 @@ async function boot() {
       float fbm3(vec3 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ s += a*snoise(p); p = p*2.07 + 1.7; a *= 0.5; } return s; }
       vec2 rot(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c*p.x - s*p.y, s*p.x + c*p.y); }
 
-      // Background seen along an escaped direction: the rendered galaxy frame when the
-      // direction is on screen, otherwise the baked sky + a hash star field + the
-      // glow of the surrounding galactic disk.
-      vec3 background(vec3 d){
-        vec3 proc = textureCube(uSky, d).rgb;
-        vec3 g = d*190.0; vec3 cell = floor(g);
-        float h = hash13(cell);
-        if (h > 0.965) {
-          vec3 sp = normalize(cell + 0.5 + (vec3(hash13(cell + 1.3), hash13(cell + 2.7), hash13(cell + 4.1)) - 0.5)*0.7);
-          float ang = length(d - sp)*190.0;
-          proc += mix(vec3(1.0, 0.75, 0.55), vec3(0.7, 0.82, 1.0), hash13(cell + 9.1))*exp(-ang*ang*90.0)*pow((h - 0.965)/0.035, 3.0)*1.2;
+      // ---- Resolved stars, drawn analytically per pixel so lensing turns them into crisp arcs.
+      // fp = angular footprint of this pixel AFTER lensing (from screen-space derivatives of the
+      // final ray direction). The star kernel widens to the footprint and its peak drops by the
+      // same area ratio, so flux is conserved: no shimmer in demagnified zones, sharp images in
+      // magnified ones (lensing conserves surface brightness).
+      vec3 starKernel(vec3 d, vec3 sd, float fp, float cellAng, float flux, float T){
+        float ws = uPixAng*0.72;
+        float w = max(ws, fp*0.55);
+        flux = 2.0*(1.0 - exp(-flux*0.5));   // soft-clip the peak: isolated 1-px spikes make bloom mips look boxy
+        float vis = 1.0 - smoothstep(cellAng*0.09, cellAng*0.16, w);
+        if (vis <= 0.0) return vec3(0.0);
+        float a = length(d - sd);
+        return bb(T)*flux*exp(-0.5*a*a/(w*w))*(ws*ws)/(w*w)*vis;
+      }
+      // all-sky layer on a cube-face grid (a star never leaves its cell, so no seams)
+      vec3 skyStars(vec3 d, float fp, float N, float prob, float gain, float seed){
+        vec3 a = abs(d); vec2 uv; float face;
+        if (a.x >= a.y && a.x >= a.z) { uv = d.yz/a.x; face = d.x > 0.0 ? 0.0 : 1.0; }
+        else if (a.y >= a.z)          { uv = d.xz/a.y; face = d.y > 0.0 ? 2.0 : 3.0; }
+        else                          { uv = d.xy/a.z; face = d.z > 0.0 ? 4.0 : 5.0; }
+        vec2 cell = floor((uv*0.5 + 0.5)*N);
+        vec3 hc = vec3(cell, face*131.0 + seed);
+        // denser towards the galactic plane (y = 0)
+        if (hash13(hc) > prob*(0.6 + 0.8*exp(-abs(d.y)*3.0))) return vec3(0.0);
+        vec2 suv = (cell + 0.2 + 0.6*vec2(hash13(hc + 1.7), hash13(hc + 4.3)))/N*2.0 - 1.0;
+        vec3 sd = face < 1.5 ? vec3(face < 0.5 ? 1.0 : -1.0, suv.x, suv.y)
+                : face < 3.5 ? vec3(suv.x, face < 2.5 ? 1.0 : -1.0, suv.y)
+                             : vec3(suv.x, suv.y, face < 4.5 ? 1.0 : -1.0);
+        sd = normalize(sd);
+        float flux = gain*pow(hash13(hc + 7.7), 6.0);
+        float tr = hash13(hc + 9.9);
+        float T = tr < 0.62 ? mix(3100.0, 5600.0, tr/0.62) : tr < 0.88 ? mix(5600.0, 9500.0, (tr - 0.62)/0.26) : mix(9500.0, 30000.0, (tr - 0.88)/0.12);
+        return starKernel(d, sd, fp, 2.0/N, flux, T);
+      }
+      // Nuclear star cluster seen from outside: Plummer profile in a gnomonic frame centred on the
+      // black hole, scaled by the cluster's angular radius so it visibly grows as you approach.
+      float nscProfile(float rq){ float k = 1.0 + rq*rq/0.03; return 1.0/(k*k); }
+      vec3 nscStars(vec3 d, float fp, float G, float gain, float seed){
+        float cd = dot(d, uNscC);
+        if (cd < 0.05) return vec3(0.0);
+        vec2 q = vec2(dot(d, uNscE1), dot(d, uNscE2))/(cd*uNscTan);
+        vec2 cell = floor(q*G);
+        float rq = length((cell + 0.5)/G);
+        vec3 hc = vec3(cell, seed);
+        if (hash13(hc) > nscProfile(rq)*0.9 + 0.04*(1.0 - smoothstep(0.6, 1.0, rq))) return vec3(0.0);
+        vec2 ts = (cell + 0.12 + 0.76*vec2(hash13(hc + 1.7), hash13(hc + 4.3)))/G*uNscTan;
+        vec3 sd = normalize(uNscC + ts.x*uNscE1 + ts.y*uNscE2);
+        float cellAng = uNscTan/G*cd*cd;
+        float resolved = smoothstep(1.3, 3.2, cellAng/uPixAng);   // unresolved stars live in the glow term
+        float tr = hash13(hc + 9.9);
+        float T = tr < 0.7 ? mix(3200.0, 4900.0, tr/0.7) : mix(14000.0, 30000.0, (tr - 0.7)/0.3);   // red giants + hot S-stars
+        return starKernel(d, sd, fp, cellAng, gain*pow(hash13(hc + 7.7), 5.0)*resolved, T);
+      }
+
+      // Background along an escaped direction.
+      //  - far from the hole: the rendered galaxy frame itself (identical pixels, seamless)
+      //  - deep in the dive: a 360° cubemap of the same galaxy captured from the camera,
+      //    pre-filtered by the lensed pixel footprint (no stretched sprites, no off-screen seams)
+      //  - plus resolved stars of the nuclear star cluster, drawn analytically on top.
+      vec3 background(vec3 d, float fp){
+        float lod = clamp(log2(max(fp, 1e-7)/uTexelAng) + 0.6, 0.6, 6.0);
+        vec3 cube = textureLod(uGalCube, d, lod).rgb*uCubeGain;
+        vec3 col = cube;
+        if (uCubeMix < 0.999) {
+          vec3 scr = cube;
+          vec4 c = uProj*vec4(mat3(uView)*d, 0.0);
+          if (c.w > 0.0) {
+            vec2 uv = c.xy/c.w*0.5 + 0.5;
+            float outside = max(max(-uv.x, uv.x - 1.0), max(-uv.y, uv.y - 1.0));
+            float w = 1.0 - smoothstep(0.0, 0.05, outside);
+            if (w > 0.0) scr = mix(cube, texture2D(tDiffuse, clamp(uv, 0.0, 1.0)).rgb, w);
+          }
+          col = mix(scr, cube, uCubeMix);
         }
-        proc += vec3(1.0, 0.82, 0.62)*exp(-abs(d.y)*6.0)*uGalGlow;
-        vec4 c = uProj*vec4(mat3(uView)*d, 0.0);
-        if (c.w <= 0.0) return proc;
-        vec2 uv = c.xy/c.w*0.5 + 0.5;
-        float outside = max(max(-uv.x, uv.x - 1.0), max(-uv.y, uv.y - 1.0));
-        float w = 1.0 - smoothstep(0.0, 0.05, outside);
-        if (w <= 0.0) return proc;
-        return mix(proc, texture2D(tDiffuse, clamp(uv, 0.0, 1.0)).rgb, w);
+        if (uDeepStars > 0.0) {
+          vec3 st = skyStars(d, fp, 150.0, 0.32, 3.2, 3.0)
+                  + skyStars(d, fp, 330.0, 0.42, 1.0, 17.0)
+                  + skyStars(d, fp, 720.0, 0.55, 0.32, 41.0);
+          col += st*uDeepStars + vec3(1.0, 0.8, 0.6)*0.0035*uDeepStars;
+        }
+        if (uNscMix > 0.0) {
+          float cd = dot(d, uNscC);
+          vec3 st = nscStars(d, fp, 13.0, 8.0, 5.0) + nscStars(d, fp, 36.0, 4.0, 23.0) + nscStars(d, fp, 95.0, 1.6, 61.0) + nscStars(d, fp, 210.0, 0.6, 89.0);
+          float glow = cd > 0.05 ? nscProfile(length(vec2(dot(d, uNscE1), dot(d, uNscE2))/(cd*uNscTan))) : 0.0;
+          col += (st + bb(4700.0)*glow*uNscGlow)*uNscMix;
+        }
+        return col;
       }
 
       // Thin accretion disk hit at p (rs units); vdir = ray direction (camera -> scene).
@@ -1366,7 +1440,6 @@ async function boot() {
       }
 
       void main(){
-        vec3 base = texture2D(tDiffuse, vUv).rgb;
         vec2 ndc = vUv*2.0 - 1.0;
         vec4 vd = uInvProj*vec4(ndc, 1.0, 1.0);
         vec3 v = normalize(mat3(uCamWorld)*(vd.xyz/vd.w));
@@ -1415,14 +1488,20 @@ async function boot() {
                 trans *= 1.0 - dc.a;
               }
             }
+            {
+              // faint volumetric corona above and below the disk: gives the disk depth, and is lensed too
+              float yc = abs(dot(xn, uN));
+              float cor = exp(-yc/(0.22 + 0.06*rn))*smoothstep(RIN*0.85, RIN*1.5, rn)*(1.0 - smoothstep(5.0, ROUT, rn))/rn;
+              col += trans*bb(uTin*0.7)*cor*dl*length(v)*uCorona*uDiskFade;
+            }
             if (uJets > 0.0) {
               float ya = dot(xn, uN), ay = abs(ya);
               vec3 radial = xn - ya*uN; float rho2 = dot(radial, radial);
-              float w = 0.09 + 0.05*ay;
-              float jet = exp(-rho2/(w*w))*smoothstep(1.4, 4.0, ay)*exp(-ay/20.0);
+              float w = 0.05 + 0.028*ay;                          // narrow, slowly opening cone
+              float jet = exp(-rho2/(w*w))*smoothstep(1.3, 3.0, ay)*exp(-ay/9.0);
               if (jet > 0.002) {
                 float fl = jetNoise(ay, sqrt(rho2), sign(ya));
-                col += trans*vec3(0.55, 0.72, 1.0)*jet*(0.45 + 0.55*fl)*dl*length(v)*uJets*0.05*uDiskFade;
+                col += trans*vec3(0.45, 0.66, 1.0)*jet*(0.3 + 0.7*fl*fl)*dl*length(v)*uJets*0.11*uDiskFade;
               }
             }
             x = xn; minR = min(minR, rn);
@@ -1443,7 +1522,10 @@ async function boot() {
           // photon ring: rays that skimmed the photon sphere (1.5 rs) pick up the lensed inner disk light
           if (!captured) col += trans*bb(uTin*0.85)*exp(-max(minR - 1.5, 0.0)*22.0)*0.65*uDiskFade;
         }
-        vec3 outc = col + (captured ? vec3(0.0) : trans*background(normalize(v)));
+        // pixel footprint of the final (lensed) direction; evaluated in uniform control flow
+        vec3 dirF = normalize(v);
+        float fp = length(fwidth(dirF));
+        vec3 outc = col + (captured ? vec3(0.0) : trans*background(dirF, fp));
         // alpha carries the "pure shadow" mask for the final pass (0 = true black, keep bloom out)
         gl_FragColor = vec4(outc, captured ? 1.0 - trans : 1.0);
       }`,
@@ -1502,6 +1584,50 @@ async function boot() {
   composer.addPass(filmPass);
   composer.addPass(outputPass);
   bhPass.enabled = false; savePass.enabled = false;
+
+  /* ===================================================================
+     360° capture of the real galaxy around the camera, used as the lensed
+     background deep in the dive. Refreshed one cube face per frame.
+     =================================================================== */
+  let galCubeRT = null, galCubeCam = null, galCubeValid = false, galCubeFace = 0;
+  const galCubeAt = new THREE.Vector3();
+  function ensureGalCube() {
+    const size = TIERS[S.tier].env;   // sampled pre-blurred, so a small capture is enough
+    if (galCubeRT && galCubeRT.width === size) return;
+    if (galCubeRT) galCubeRT.dispose();
+    galCubeRT = new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+    galCubeCam = new THREE.CubeCamera(0.01, 6000, galCubeRT);
+    bhMat.uniforms.uGalCube.value = galCubeRT.texture;
+    bhMat.uniforms.uTexelAng.value = (Math.PI / 2) / size;
+    galCubeValid = false;
+  }
+  function disposeGalCube() {
+    if (!galCubeRT) return;
+    galCubeRT.dispose(); galCubeRT = null; galCubeCam = null;
+    bhMat.uniforms.uGalCube.value = null; galCubeValid = false;
+  }
+  function renderGalCube(face) { // face < 0: all six faces
+    const size = galCubeRT.width;
+    const sScale = GU.uPixScale.value, sMin = GU.uMinPx.value, sGain = starMat.uniforms.uGain.value;
+    // a 90° cube face has its own pixel scale; star gain is rescaled so flux per solid angle matches the screen
+    const pixAngDev = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / (innerHeight * dprNow);
+    const texAng = 2 / size, cubeMin = 1.5;
+    GU.uPixScale.value = size / 2; GU.uMinPx.value = cubeMin;
+    starMat.uniforms.uGain.value = sGain * Math.pow((sMin * pixAngDev) / (cubeMin * texAng), 2);
+    bgStars.visible = false; // resolved background stars are drawn analytically by the lens shader instead
+    starMat.uniforms.uSpikes.value = 0;
+    galCubeCam.position.copy(camera.position);
+    galCubeCam.updateMatrixWorld(true);
+    if (face < 0) galCubeCam.update(renderer, scene);
+    else {
+      const prev = renderer.getRenderTarget();
+      renderer.setRenderTarget(galCubeRT, face);
+      renderer.render(scene, galCubeCam.children[face]);
+      renderer.setRenderTarget(prev);
+    }
+    bgStars.visible = true; starMat.uniforms.uSpikes.value = 1;
+    GU.uPixScale.value = sScale; GU.uMinPx.value = sMin; starMat.uniforms.uGain.value = sGain;
+  }
 
   /* ===================================================================
      Collision mode (restricted three-body, GPU leapfrog)
@@ -2173,7 +2299,7 @@ async function boot() {
       if (m === 'collision') {
         // galaxy GPU buffers are released (CPU copies stay; three re-uploads them on return)
         galaxyGroup.visible = false;
-        starGeo.dispose(); dustGeo.dispose(); hiiGeo.dispose();
+        starGeo.dispose(); dustGeo.dispose(); hiiGeo.dispose(); disposeGalCube();
         rebuildCollision();
         controls.minDistance = 2; controls.maxDistance = 420;
         director.place(0.9, COLL_VIEW.el, COLL_VIEW.dist, 0, 0, 0);
@@ -2414,6 +2540,7 @@ async function boot() {
      =================================================================== */
   let wantShot = false;
   let fpsFrames = 0, fpsT = 0, uiT = 0;
+  const _nc = new THREE.Vector3(), yAxis = new THREE.Vector3(0, 1, 0), xAxis = new THREE.Vector3(1, 0, 0);
   const camDir = new THREE.Vector3(), diskN = new THREE.Vector3(), diskU = new THREE.Vector3(), diskW = new THREE.Vector3(), zAxis = new THREE.Vector3(0, 0, 1);
   diskN.set(0, 1, 0).applyAxisAngle(new THREE.Vector3(1, 0, 0), 0.07).applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.6).normalize();
   diskU.crossVectors(diskN, zAxis).normalize(); diskW.crossVectors(diskU, diskN).normalize();
@@ -2483,13 +2610,33 @@ async function boot() {
       if (!S.paused) U.uDir.value = sign;
       U.uTin.value = 10000 * Math.pow(massM / MSUN_REF, -0.25);   // T ∝ M^-1/4
       U.uOmega.value = 2.2 * Math.pow(MSUN_REF / massM, 0.3);
-      U.uGalGlow.value = 0.018 * diveMix;
-    }
+      // nuclear star cluster (R ≈ 12 ly): angular radius grows as the physical distance shrinks
+      U.uPixAng.value = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / (innerHeight * dprNow);
+      const thc = Math.atan(12 / physDist);
+      U.uNscTan.value = Math.tan(Math.min(thc, 1.3));
+      U.uNscMix.value = 1 - smoothstep(0.55, 1.15, thc);
+      U.uNscGlow.value = 1.2 * (1 - smoothstep(0.03, 0.5, thc));   // the cluster resolves into stars as it fills the view
+      U.uDeepStars.value = smoothstep(0.45, 1.0, thc);
+      _nc.copy(camera.position).negate().normalize();
+      U.uNscC.value.copy(_nc);
+      U.uNscE1.value.crossVectors(_nc, Math.abs(_nc.y) < 0.95 ? yAxis : xAxis).normalize();
+      U.uNscE2.value.crossVectors(_nc, U.uNscE1.value);
+      U.uCubeMix.value = smoothstep(2.5e4, 2.5e3, rObs);
+      skyGroup.position.copy(camera.position);
+      ensureGalCube();
+      // full capture on entry or after a camera jump; otherwise refresh two faces per frame
+      if (!galCubeValid || galCubeAt.distanceTo(camera.position) > 0.35 * D) { renderGalCube(-1); galCubeValid = true; galCubeAt.copy(camera.position); }
+      else if (rObs < 6e4) {
+        renderGalCube(galCubeFace); renderGalCube((galCubeFace + 1) % 6);
+        galCubeFace = (galCubeFace + 2) % 6;
+        if (galCubeFace === 0) galCubeAt.copy(camera.position);
+      }
+    } else galCubeValid = false;
     filmMat.uniforms.uMask.value = inDive && S.post ? smoothstep(3e3, 400, rObs) : 0;
     filmMat.uniforms.uTime.value = (now * 0.001) % 1000;
-    filmMat.uniforms.uCA.value = S.post ? 0.006 : 0;
+    filmMat.uniforms.uCA.value = S.post ? 0.006 * (1 - 0.65 * diveMix) : 0;   // keep the lensed star field crisp
     filmMat.uniforms.uVig.value = S.post ? 0.32 : 0;
-    filmMat.uniforms.uGrain.value = S.post ? 0.055 : 0;
+    filmMat.uniforms.uGrain.value = S.post ? 0.055 * (1 - 0.45 * diveMix) : 0;
 
     // ---- collision
     if (S.mode === 'collision' && coll) {
@@ -2577,7 +2724,7 @@ async function boot() {
   }
 
   // debugging / automation hook
-  window.EH = { S, camera, controls, director, setMode, applyTier, diveToCore, begin, renderer, get coll() { return coll; },
+  window.EH = { S, camera, controls, director, setMode, applyTier, diveToCore, begin, renderer, starMat, bloomPass, bhMat, get coll() { return coll; },
     findPickable() { // returns the screen position of a currently visible pickable star (automation helper)
       for (let n = 0; n < G.pick.length; n++) { const i = G.pick[n]; starPos(i, S.simTime, _p); if (project(_p, _s) && _s.x > 300 && _s.x < innerWidth - 340 && _s.y > 140 && _s.y < innerHeight - 120 && pickStar(_s.x, _s.y) === i) return { i, x: _s.x, y: _s.y }; }
       return null;
