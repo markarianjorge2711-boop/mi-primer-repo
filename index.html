@@ -485,13 +485,13 @@ const IS_MOBILE = window.matchMedia('(pointer: coarse)').matches && Math.min(scr
 const URLP = new URLSearchParams(location.search);
 
 const TIERS = {
-  ultra:  { label: 'Ultra',  stars: 1000000, dust: 46000, knots: 260, bg: 26000, dpr: 2,   bloomScale: 1.0,  bhSteps: 320, coll: 362, sky: 1024, env: 384 },
-  high:   { label: 'High',   stars: 550000, dust: 34000, knots: 220, bg: 18000, dpr: 2,   bloomScale: 0.75, bhSteps: 220, coll: 320, sky: 1024, env: 256 },
-  medium: { label: 'Medium', stars: 260000, dust: 22000, knots: 160, bg: 12000,  dpr: 1.5, bloomScale: 0.6,  bhSteps: 150, coll: 288, sky: 512, env: 256 },
+  ultra:  { label: 'Ultra',  stars: 1000000, dust: 46000, knots: 260, bg: 26000, dpr: 2,   bloomScale: 1.0,  bhSteps: 320, coll: 512, sky: 1024, env: 384 },
+  high:   { label: 'High',   stars: 550000, dust: 34000, knots: 220, bg: 18000, dpr: 2,   bloomScale: 0.75, bhSteps: 220, coll: 384, sky: 1024, env: 256 },
+  medium: { label: 'Medium', stars: 260000, dust: 22000, knots: 160, bg: 12000,  dpr: 1.5, bloomScale: 0.6,  bhSteps: 150, coll: 320, sky: 512, env: 256 },
   low:    { label: 'Low',    stars: 120000, dust: 13000, knots: 110, bg: 8000,  dpr: 1,   bloomScale: 0.5,  bhSteps: 100, coll: 256, sky: 512, env: 192 },
 };
 const TIER_ORDER = ['low', 'medium', 'high', 'ultra'];
-const MAXC = IS_MOBILE ? { stars: 300000, dust: 22000, knots: 160, bg: 12000 } : { stars: 1000000, dust: 46000, knots: 260, bg: 26000 };
+const MAXC = IS_MOBILE ? { stars: 550000, dust: 34000, knots: 220, bg: 18000 } : { stars: 1000000, dust: 46000, knots: 260, bg: 26000 };
 
 /* Galaxy units: 1 world unit = 1 kly; time in Myr.
    Flat rotation curve v(r) = V0 (1 - e^{-r/RC}); V0 = 0.734 kly/Myr = 220 km/s. */
@@ -901,10 +901,10 @@ async function boot() {
   starGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 120);
 
   const starMat = new THREE.ShaderMaterial({
-    uniforms: { ...GU, uGain: { value: 1 }, uSpikes: { value: 1 } },
+    uniforms: { ...GU, uGain: { value: 1 }, uSpikes: { value: 1 }, uMaxI: { value: 1e6 } },
     vertexShader: /* glsl */`
       ${GLSL_GALAXY}
-      uniform float uPixScale; uniform float uMinPx; uniform float uGain; uniform float uCoreClear; uniform float uNearFade; uniform float uSpikes;
+      uniform float uPixScale; uniform float uMinPx; uniform float uGain; uniform float uCoreClear; uniform float uNearFade; uniform float uSpikes; uniform float uMaxI;
       attribute vec4 aP; attribute vec4 aQ; attribute vec4 aCol;
       varying vec3 vCol; varying float vI; varying float vK; varying float vHalf;
       vec3 inclined(float a, float ang, float inc, float node){
@@ -959,6 +959,7 @@ async function boot() {
         float core = clamp(raw, uMinPx, uMinPx*2.4);        // size attenuation, bounded: stars stay point-like
         core *= 0.82 + 0.5*clamp(abs(aP.w)*1.4, 0.0, 1.0);  // photographic look: brighter stars render slightly larger
         I *= clamp(sqrt(raw/core), 1.0, 1.8);               // ...and nearby stars get brighter instead of blurrier
+        I = min(I, uMaxI);
         float k = spike > 0.5 ? 6.0 : 1.0;
         vK = k; vHalf = core*k*0.5; vCol = aCol.rgb; vI = I;
         gl_PointSize = core*k;
@@ -1063,7 +1064,7 @@ async function boot() {
       ${GLSL_GALAXY}
       uniform float uPixScale; uniform float uCoreClear; uniform float uNearFade; uniform float uDim;
       attribute vec4 aK; attribute vec4 aH; attribute float aS;
-      varying vec3 vC;
+      varying vec3 vC; varying vec2 vSeed;
       void main(){
         float j = floor(aK.y*uArms);
         float a = mix(uBar*0.92, ARM_RMAX, aK.x);
@@ -1074,21 +1075,29 @@ async function boot() {
         vec4 mv = modelViewMatrix*vec4(pos, 1.0);
         float dist = max(-mv.z, 1e-3);
         float px = aS*uPixScale/dist;
-        fade *= smoothstep(0.8, 2.5, px)*(1.0 - smoothstep(40.0, 90.0, px));
+        fade *= smoothstep(0.8, 2.5, px)*(1.0 - smoothstep(28.0, 60.0, px));   // close-up nebulae would read as bokeh
         if (uCoreClear > 0.0) fade *= smoothstep(uCoreClear*0.6, uCoreClear, length(pos));
         fade *= smoothstep(uNearFade*0.5, uNearFade*1.5, dist);
         vC = aH.rgb*aH.a*fade*uDim;
+        vSeed = vec2(fract(position.x*137.31 + aK.w*91.7), fract(position.z*71.13 + aS*13.7))*40.0;
         gl_PointSize = clamp(px, 1.0, 140.0);
         gl_Position = projectionMatrix*mv;
         if (fade < 0.002) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); }
       }`,
     fragmentShader: /* glsl */`
-      varying vec3 vC;
+      varying vec3 vC; varying vec2 vSeed;
+      float vn(vec2 x){ vec2 i = floor(x), f = fract(x); f = f*f*(3.0 - 2.0*f);
+        float a = fract(sin(dot(i, vec2(127.1, 311.7)))*43758.5), b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7)))*43758.5);
+        float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7)))*43758.5), d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7)))*43758.5);
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y); }
       void main(){
         vec2 p = gl_PointCoord*2.0 - 1.0;
         float r2 = dot(p, p);
         if (r2 > 1.0) discard;
-        gl_FragColor = vec4(vC*exp(-r2*3.5)*(1.0 - r2), 1.0);
+        // wispy, filamentary ionised gas instead of a smooth blob
+        float n = vn(p*2.6 + vSeed)*0.65 + vn(p*5.3 + vSeed.yx)*0.35;
+        float wisp = smoothstep(0.25, 0.85, n + 0.35*(1.0 - r2));
+        gl_FragColor = vec4(vC*exp(-r2*3.0)*(1.0 - r2)*(0.35 + 1.1*wisp), 1.0);
       }`,
     transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
   });
@@ -1289,7 +1298,7 @@ async function boot() {
       uJets: { value: 1 }, uOmega: { value: 2.2 }, uSteps: { value: 220 }, uDiskGain: { value: 4.6 }, uCorona: { value: 0.06 },
       // high-quality surroundings: 360° capture of the real galaxy + procedural resolved stars
       uGalCube: { value: null }, uCubeMix: { value: 0 }, uCubeGain: { value: 1 }, uTexelAng: { value: 0.0015 }, uPixAng: { value: 0.0009 },
-      uDeepStars: { value: 0 }, uNscMix: { value: 0 }, uNscTan: { value: 0.01 }, uNscGlow: { value: 1.2 },
+      uPsfK: { value: 0.9 }, uDeepStars: { value: 0 }, uNscMix: { value: 0 }, uNscTan: { value: 0.01 }, uNscGlow: { value: 1.2 },
       uNscC: { value: new THREE.Vector3(0, 0, -1) }, uNscE1: { value: new THREE.Vector3(1, 0, 0) }, uNscE2: { value: new THREE.Vector3(0, 1, 0) },
     },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }`,
@@ -1313,19 +1322,27 @@ async function boot() {
       float fbm3(vec3 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ s += a*snoise(p); p = p*2.07 + 1.7; a *= 0.5; } return s; }
       vec2 rot(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c*p.x - s*p.y, s*p.x + c*p.y); }
 
-      // ---- Resolved stars, drawn analytically per pixel so lensing turns them into crisp arcs.
-      // fp = angular footprint of this pixel AFTER lensing (from screen-space derivatives of the
-      // final ray direction). The star kernel widens to the footprint and its peak drops by the
-      // same area ratio, so flux is conserved: no shimmer in demagnified zones, sharp images in
-      // magnified ones (lensing conserves surface brightness).
-      vec3 starKernel(vec3 d, vec3 sd, float fp, float cellAng, float flux, float T){
-        float ws = uPixAng*0.72;
-        float w = max(ws, fp*0.55);
-        flux = 2.0*(1.0 - exp(-flux*0.5));   // soft-clip the peak: isolated 1-px spikes make bloom mips look boxy
-        float vis = 1.0 - smoothstep(cellAng*0.09, cellAng*0.16, w);
+      // ---- Resolved stars, drawn analytically per pixel.
+      // Stars are POINT sources: lensing moves and brightens their images but never stretches
+      // them. So each star is drawn in screen space: the 2x2 lens Jacobian J (derivatives of the
+      // final ray direction across the pixel) maps the star's source-plane offset back to a
+      // pixel offset, the image gets a fixed round PSF, and its brightness is multiplied by the
+      // magnification mu = pixel area / |det J|. Result: crisp round stars everywhere, which pile
+      // up and brighten along the Einstein ring and reappear as secondary images inside it.
+      vec3 gDx; vec3 gDy; float gA; float gB; float gC; float gDet; float gMu; float gSmax;
+      uniform float uPsfK;
+      vec3 starKernel(vec3 d, vec3 sd, float cellAng, float flux, float T){
+        // a star cell must span several pixels, otherwise neighbouring stars alias (the cube glow carries that light)
+        float vis = smoothstep(3.0, 6.0, cellAng/max(gSmax, 1e-9));
         if (vis <= 0.0) return vec3(0.0);
-        float a = length(d - sd);
-        return bb(T)*flux*exp(-0.5*a*a/(w*w))*(ws*ws)/(w*w)*vis;
+        vec3 e = sd - d;
+        float r1 = dot(gDx, e), r2 = dot(gDy, e);
+        float px = (gC*r1 - gB*r2)/gDet, py = (gA*r2 - gB*r1)/gDet;   // star offset in pixels
+        float q = px*px + py*py;
+        if (q > 12.0) return vec3(0.0);
+        float peak = flux*gMu;
+        peak = 2.4*(1.0 - exp(-peak/2.4));        // soft-clip: no 1-px spikes that make bloom boxy
+        return bb(T)*peak*exp(-q*uPsfK)*vis;
       }
       // all-sky layer on a cube-face grid (a star never leaves its cell, so no seams)
       vec3 skyStars(vec3 d, float fp, float N, float prob, float gain, float seed){
@@ -1345,7 +1362,7 @@ async function boot() {
         float flux = gain*pow(hash13(hc + 7.7), 6.0);
         float tr = hash13(hc + 9.9);
         float T = tr < 0.62 ? mix(3100.0, 5600.0, tr/0.62) : tr < 0.88 ? mix(5600.0, 9500.0, (tr - 0.62)/0.26) : mix(9500.0, 30000.0, (tr - 0.88)/0.12);
-        return starKernel(d, sd, fp, 2.0/N, flux, T);
+        return starKernel(d, sd, 2.0/N, flux, T);
       }
       // Nuclear star cluster seen from outside: Plummer profile in a gnomonic frame centred on the
       // black hole, scaled by the cluster's angular radius so it visibly grows as you approach.
@@ -1364,7 +1381,7 @@ async function boot() {
         float resolved = smoothstep(1.3, 3.2, cellAng/uPixAng);   // unresolved stars live in the glow term
         float tr = hash13(hc + 9.9);
         float T = tr < 0.7 ? mix(3200.0, 4900.0, tr/0.7) : mix(14000.0, 30000.0, (tr - 0.7)/0.3);   // red giants + hot S-stars
-        return starKernel(d, sd, fp, cellAng, gain*pow(hash13(hc + 7.7), 5.0)*resolved, T);
+        return starKernel(d, sd, cellAng, gain*pow(hash13(hc + 7.7), 5.0)*resolved, T);
       }
 
       // Background along an escaped direction.
@@ -1388,9 +1405,9 @@ async function boot() {
           col = mix(scr, cube, uCubeMix);
         }
         if (uDeepStars > 0.0) {
-          vec3 st = skyStars(d, fp, 150.0, 0.32, 3.2, 3.0)
-                  + skyStars(d, fp, 330.0, 0.42, 1.0, 17.0)
-                  + skyStars(d, fp, 720.0, 0.55, 0.32, 41.0);
+          vec3 st = skyStars(d, fp, 150.0, 0.34, 3.0, 3.0)
+                  + skyStars(d, fp, 230.0, 0.45, 1.1, 17.0)
+                  + skyStars(d, fp, 340.0, 0.55, 0.45, 41.0);
           col += st*uDeepStars + vec3(1.0, 0.8, 0.6)*0.0035*uDeepStars;
         }
         if (uNscMix > 0.0) {
@@ -1522,9 +1539,15 @@ async function boot() {
           // photon ring: rays that skimmed the photon sphere (1.5 rs) pick up the lensed inner disk light
           if (!captured) col += trans*bb(uTin*0.85)*exp(-max(minR - 1.5, 0.0)*22.0)*0.65*uDiskFade;
         }
-        // pixel footprint of the final (lensed) direction; evaluated in uniform control flow
+        // lens Jacobian of the final (lensed) direction; evaluated in uniform control flow
         vec3 dirF = normalize(v);
-        float fp = length(fwidth(dirF));
+        gDx = dFdx(dirF); gDy = dFdy(dirF);
+        gA = dot(gDx, gDx); gB = dot(gDx, gDy); gC = dot(gDy, gDy);
+        gDet = max(gA*gC - gB*gB, 1e-30);
+        gMu = clamp(uPixAng*uPixAng/sqrt(gDet), 0.0, 8.0);
+        float tr = gA + gC;
+        gSmax = sqrt(0.5*(tr + sqrt(max(tr*tr - 4.0*gDet, 0.0))));
+        float fp = gSmax;
         vec3 outc = col + (captured ? vec3(0.0) : trans*background(dirF, fp));
         // alpha carries the "pure shadow" mask for the final pass (0 = true black, keep bloom out)
         gl_FragColor = vec4(outc, captured ? 1.0 - trans : 1.0);
@@ -1615,7 +1638,8 @@ async function boot() {
     GU.uPixScale.value = size / 2; GU.uMinPx.value = cubeMin;
     starMat.uniforms.uGain.value = sGain * Math.pow((sMin * pixAngDev) / (cubeMin * texAng), 2);
     bgStars.visible = false; // resolved background stars are drawn analytically by the lens shader instead
-    starMat.uniforms.uSpikes.value = 0;
+    starMat.uniforms.uSpikes.value = 0; starMat.uniforms.uMaxI.value = 0.02;
+    const sNeb = nebulae.visible; nebulae.visible = false;   // blurred in the capture they would read as pink smudges
     galCubeCam.position.copy(camera.position);
     galCubeCam.updateMatrixWorld(true);
     if (face < 0) galCubeCam.update(renderer, scene);
@@ -1625,7 +1649,7 @@ async function boot() {
       renderer.render(scene, galCubeCam.children[face]);
       renderer.setRenderTarget(prev);
     }
-    bgStars.visible = true; starMat.uniforms.uSpikes.value = 1;
+    bgStars.visible = true; starMat.uniforms.uSpikes.value = 1; starMat.uniforms.uMaxI.value = 1e6; nebulae.visible = sNeb;
     GU.uPixScale.value = sScale; GU.uMinPx.value = sMin; starMat.uniforms.uGain.value = sGain;
   }
 
@@ -1633,8 +1657,13 @@ async function boot() {
      Collision mode (restricted three-body, GPU leapfrog)
      =================================================================== */
   const COLL = { SCALE: 14, EPS: 0.06, EPSC: 0.25, KDF: 0.17, RDF: 1.2, DT: 0.01, MYR_PER_UNIT: 13.3, UNITS_PER_SEC: 1.0 };
-  let coll = null;
+  let coll = null, collAuto = true;
 
+  /* Particle populations (pos.w = galaxy + 2·type):
+       0 disk stars · 1 bulge stars · 2 gas (HII-forming) · 3 dust (absorbing)
+     vel.w carries a "starburst" level: gas that feels a strong tidal (differential)
+     pull from the companion lights up pink/blue, then fades over ~35 Myr — the
+     interaction-triggered star formation seen in the Antennae or the Mice. */
   class CollisionSim {
     constructor(size) {
       this.size = size; this.N = size * size;
@@ -1645,7 +1674,7 @@ async function boot() {
       this.cv = [new Float64Array(3), new Float64Array(3)];
       this.ca = [new Float64Array(3), new Float64Array(3)];
       this.M = [1, 0.5];
-      this.t = 0;
+      this.t = 0; this.prevSep = 1e9; this.approaching = true; this.peris = 0; this.phase = 'Approach';
       this.group = new THREE.Group();
       this.cur = 0;
       if (this.useGPU) {
@@ -1654,22 +1683,37 @@ async function boot() {
         const err = this.gpu.init();
         if (err) { this.gpu.dispose(); this.gpu = null; this.useGPU = false; this.size = 128; this.N = 128 * 128; }
       }
+      // fixed population layout, so the render geometries are built once
+      this.type = new Uint8Array(this.N);
+      const tr = makeRng(424242);
+      const dustIdx = [];
+      for (let i = 0; i < this.N; i++) {
+        const r = tr(), t = r < 0.12 ? 1 : r < 0.25 ? 2 : r < 0.32 ? 3 : 0;
+        this.type[i] = t; if (t === 3) dustIdx.push(i);
+      }
       if (this.useGPU) {
         this.posRT = [this.gpu.createRenderTarget(), this.gpu.createRenderTarget()];
         this.velRT = [this.gpu.createRenderTarget(), this.gpu.createRenderTarget()];
         this.velMat = this.gpu.createShaderMaterial(/* glsl */`
           uniform sampler2D tPos; uniform sampler2D tVel;
-          uniform vec3 uC1; uniform vec3 uC2; uniform float uM1; uniform float uM2; uniform float uDt; uniform float uEps2;
+          uniform vec3 uC1; uniform vec3 uC2; uniform float uM1; uniform float uM2; uniform float uDt; uniform float uEps2; uniform float uSep;
+          // Plummer-softened point mass: finite force at r -> 0, nothing explodes
+          vec3 pull(vec3 c, float m, vec3 x){ vec3 d = c - x; return m*d*pow(dot(d, d) + uEps2, -1.5); }
           void main(){
             vec2 uv = gl_FragCoord.xy/resolution.xy;
             vec4 p = texture2D(tPos, uv); vec4 v = texture2D(tVel, uv);
-            vec3 d1 = uC1 - p.xyz; vec3 d2 = uC2 - p.xyz;
-            // Plummer-softened point masses: finite force at r -> 0, nothing explodes
-            vec3 a = uM1*d1*pow(dot(d1, d1) + uEps2, -1.5) + uM2*d2*pow(dot(d2, d2) + uEps2, -1.5);
-            gl_FragColor = vec4(v.xyz + a*uDt, v.w);
+            vec3 a1 = pull(uC1, uM1, p.xyz), a2 = pull(uC2, uM2, p.xyz);
+            // tidal (differential) pull of the companion, relative to the particle's own binding
+            bool g0 = mod(p.w, 2.0) < 0.5;
+            vec3 own = g0 ? a1 : a2;
+            vec3 tid = g0 ? a2 - pull(uC2, uM2, uC1) : a1 - pull(uC1, uM1, uC2);
+            float ratio = length(tid)/(length(own) + 1e-4);
+            float target = smoothstep(0.2, 0.9, ratio)*smoothstep(0.1, 0.45, uSep);
+            float burst = max(v.w*exp(-abs(uDt)/1.8), target);       // fast rise, ~25 Myr decay
+            gl_FragColor = vec4(v.xyz + (a1 + a2)*uDt, burst);
           }`, {
           tPos: { value: null }, tVel: { value: null }, uC1: { value: new THREE.Vector3() }, uC2: { value: new THREE.Vector3() },
-          uM1: { value: 1 }, uM2: { value: 0.5 }, uDt: { value: COLL.DT }, uEps2: { value: COLL.EPS * COLL.EPS },
+          uM1: { value: 1 }, uM2: { value: 0.5 }, uDt: { value: COLL.DT }, uEps2: { value: COLL.EPS * COLL.EPS }, uSep: { value: 5 },
         });
         this.posMat = this.gpu.createShaderMaterial(/* glsl */`
           uniform sampler2D tPos; uniform sampler2D tVel; uniform float uDt;
@@ -1682,7 +1726,7 @@ async function boot() {
         this.cpuPos = new Float32Array(this.N * 3);
         this.cpuVel = new Float32Array(this.N * 3);
       }
-      // particle render geometry
+      // ---- light-emitting particles (stars + gas), all N; dust is culled in the shader
       const geo = new THREE.BufferGeometry();
       const ref = new Float32Array(this.N * 3);
       for (let i = 0; i < this.N; i++) { ref[i * 3] = ((i % this.size) + 0.5) / this.size; ref[i * 3 + 1] = (Math.floor(i / this.size) + 0.5) / this.size; }
@@ -1690,44 +1734,106 @@ async function boot() {
       else geo.setAttribute('position', new THREE.BufferAttribute(this.cpuPos, 3).setUsage(THREE.DynamicDrawUsage));
       this.colArr = new Uint8Array(this.N * 4);
       geo.setAttribute('aCol', new THREE.BufferAttribute(this.colArr, 4, true));
+      geo.setAttribute('aType', new THREE.BufferAttribute(Float32Array.from(this.type), 1));
       this.geo = geo;
+      const gainN = Math.pow(65536 / this.N, 0.6);
       this.mat = new THREE.ShaderMaterial({
         defines: this.useGPU ? { GPU_MODE: '' } : {},
-        uniforms: { tPos: { value: null }, uScale: { value: COLL.SCALE }, uPixScale: GU.uPixScale, uMinPx: GU.uMinPx, uGain: { value: 0.13 * Math.pow(65536 / this.N, 0.6) } },
+        uniforms: {
+          tPos: { value: null }, tVel: { value: null }, uScale: { value: COLL.SCALE }, uPixScale: GU.uPixScale, uMinPx: GU.uMinPx,
+          uGain: { value: 0.17 * gainN }, uGasGain: { value: 0.3 * gainN },
+        },
         vertexShader: /* glsl */`
-          uniform sampler2D tPos; uniform float uScale; uniform float uPixScale; uniform float uMinPx; uniform float uGain;
-          attribute vec4 aCol; varying vec3 vC;
+          uniform sampler2D tPos; uniform sampler2D tVel; uniform float uScale; uniform float uPixScale; uniform float uMinPx;
+          uniform float uGain; uniform float uGasGain;
+          attribute vec4 aCol; attribute float aType;
+          varying vec3 vC; varying float vSoft;
           void main(){
             #ifdef GPU_MODE
               vec3 p = texture2D(tPos, position.xy).xyz*uScale;
+              float burst = texture2D(tVel, position.xy).w;
             #else
               vec3 p = position*uScale;
+              float burst = 0.0;
             #endif
             vec4 mv = modelViewMatrix*vec4(p, 1.0);
             float dist = max(-mv.z, 1e-3);
-            float raw = 0.09*uPixScale/dist;
-            float core = clamp(raw, uMinPx, uMinPx*2.4);
-            gl_PointSize = core;
-            // crowding compensation: unresolved disks sum to a sane surface brightness
-            vC = aCol.rgb*aCol.a*uGain*clamp(pow(45.0/dist, 0.6), 0.4, 1.6)*clamp(sqrt(raw/core), 1.0, 1.8)*smoothstep(0.05, 0.6, dist);
             gl_Position = projectionMatrix*mv;
+            if (aType > 2.5) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 1.0; vC = vec3(0.0); vSoft = 0.0; return; }
+            if (aType > 1.5) {
+              // gas: soft emission; cold gas glows faintly blue, shocked gas forms stars (Hα pink + hot blue)
+              float px = 0.7*uPixScale/dist;
+              gl_PointSize = clamp(px, 1.0, 80.0);
+              float f = smoothstep(1.5, 5.0, px)*(1.0 - smoothstep(52.0, 80.0, px));
+              // star formation is patchy: each cloud ignites only above its own threshold (aCol.g)
+              float b = max(smoothstep(aCol.g, aCol.g + 0.12, burst), aCol.r);
+              vec3 cold = vec3(0.4, 0.58, 1.0)*0.11;
+              vec3 hot = vec3(1.0, 0.36, 0.62)*0.95 + vec3(0.35, 0.45, 0.65)*b;
+              vC = mix(cold, hot, b)*aCol.a*uGasGain*f;
+              vSoft = 1.0;
+            } else {
+              float raw = 0.085*uPixScale/dist;
+              float core = clamp(raw, uMinPx, uMinPx*2.4);
+              gl_PointSize = core;
+              vec3 c = aCol.rgb*aCol.a*uGain*clamp(pow(45.0/dist, 0.6), 0.4, 1.6)*clamp(sqrt(raw/core), 1.0, 1.8);
+              if (aType < 0.5) c += vec3(0.62, 0.76, 1.0)*burst*aCol.a*uGain*1.1;   // freshly formed blue stars
+              vC = c*smoothstep(0.05, 0.6, dist);
+              vSoft = 0.0;
+            }
           }`,
-        fragmentShader: `varying vec3 vC; void main(){ vec2 p = gl_PointCoord*2.0 - 1.0; float r2 = dot(p, p); if (r2 > 1.0) discard; gl_FragColor = vec4(vC*(exp(-r2*5.0) + 0.08*exp(-r2*1.5))*(1.0 - r2), 1.0); }`,
+        fragmentShader: /* glsl */`
+          varying vec3 vC; varying float vSoft;
+          void main(){
+            vec2 p = gl_PointCoord*2.0 - 1.0; float r2 = dot(p, p);
+            if (r2 > 1.0) discard;
+            float e = vSoft > 0.5 ? exp(-r2*3.2)*(1.0 - r2) : (exp(-r2*5.0) + 0.08*exp(-r2*1.5))*(1.0 - r2);
+            gl_FragColor = vec4(vC*e, 1.0);
+          }`,
         transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
       });
       this.points = new THREE.Points(geo, this.mat);
       this.points.frustumCulled = false; this.points.renderOrder = 2;
       this.group.add(this.points);
+      // ---- dust lanes: the dust particles only, normal-blended absorbers
+      this.dustGeo = null; this.dustMat = null;
+      if (this.useGPU && dustIdx.length) {
+        const dref = new Float32Array(dustIdx.length * 3), dA = new Float32Array(dustIdx.length);
+        const dr = makeRng(99);
+        for (let k = 0; k < dustIdx.length; k++) { dref[k * 3] = ref[dustIdx[k] * 3]; dref[k * 3 + 1] = ref[dustIdx[k] * 3 + 1]; dA[k] = 0.4 + 0.6 * dr(); }
+        this.dustGeo = new THREE.BufferGeometry();
+        this.dustGeo.setAttribute('position', new THREE.BufferAttribute(dref, 3));
+        this.dustGeo.setAttribute('aA', new THREE.BufferAttribute(dA, 1));
+        this.dustMat = new THREE.ShaderMaterial({
+          uniforms: { tPos: { value: null }, uScale: { value: COLL.SCALE }, uPixScale: GU.uPixScale, uK: { value: 0.11 * Math.pow(65536 / this.N, 0.5) } },
+          vertexShader: /* glsl */`
+            uniform sampler2D tPos; uniform float uScale; uniform float uPixScale; uniform float uK;
+            attribute float aA; varying float vA;
+            void main(){
+              vec3 p = texture2D(tPos, position.xy).xyz*uScale;
+              vec4 mv = modelViewMatrix*vec4(p, 1.0);
+              float dist = max(-mv.z, 1e-3);
+              float px = 0.5*uPixScale/dist;
+              gl_PointSize = clamp(px, 1.0, 110.0);
+              vA = aA*uK*smoothstep(1.0, 3.5, px)*(1.0 - smoothstep(70.0, 110.0, px));
+              gl_Position = projectionMatrix*mv;
+            }`,
+          fragmentShader: `varying float vA; void main(){ vec2 p = gl_PointCoord*2.0 - 1.0; float r2 = dot(p, p); if (r2 > 1.0) discard; gl_FragColor = vec4(vec3(0.012, 0.008, 0.006), vA*exp(-r2*3.0)*(1.0 - r2)); }`,
+          transparent: true, depthWrite: false, depthTest: false, blending: THREE.NormalBlending,
+        });
+        const dp = new THREE.Points(this.dustGeo, this.dustMat);
+        dp.frustumCulled = false; dp.renderOrder = 3;
+        this.group.add(dp);
+      }
       this.coreMats = [];
       this.cores = [];
       for (let k = 0; k < 2; k++) {
         const m = new THREE.ShaderMaterial({
-          uniforms: { uSize: { value: 3.2 }, uI: { value: 0.8 }, uColor: { value: new THREE.Color(1.0, 0.8, 0.6) } },
+          uniforms: { uSize: { value: 3.2 }, uI: { value: 0.45 }, uColor: { value: k === 0 ? new THREE.Color(1.0, 0.86, 0.7) : new THREE.Color(1.0, 0.74, 0.48) } },
           vertexShader: billboardVS, fragmentShader: nucleusMat.fragmentShader,
           transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
         });
         const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
-        mesh.frustumCulled = false; mesh.renderOrder = 3;
+        mesh.frustumCulled = false; mesh.renderOrder = 4;
         this.coreMats.push(m); this.cores.push(mesh); this.group.add(mesh);
       }
     }
@@ -1743,6 +1849,7 @@ async function boot() {
       a1[0] = M2 * rx * f + k * vx * M2 / M; a1[1] = M2 * ry * f + k * vy * M2 / M; a1[2] = M2 * rz * f + k * vz * M2 / M;
       a2[0] = -M1 * rx * f - k * vx * M1 / M; a2[1] = -M1 * ry * f - k * vy * M1 / M; a2[2] = -M1 * rz * f - k * vz * M1 / M;
     }
+    sep() { const a = this.c[0], b = this.c[1]; return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]); }
     stepCores(dt) { // kick-drift-kick leapfrog for the two cores
       this.coreAccel();
       for (let b = 0; b < 2; b++) for (let d = 0; d < 3; d++) this.cv[b][d] += 0.5 * dt * this.ca[b][d];
@@ -1750,10 +1857,22 @@ async function boot() {
       this.coreAccel();
       for (let b = 0; b < 2; b++) for (let d = 0; d < 3; d++) this.cv[b][d] += 0.5 * dt * this.ca[b][d];
       this.t += dt;
+      if (dt > 0) { // narrate the encounter
+        const s = this.sep();
+        if (s < this.prevSep) this.approaching = true;
+        else if (this.approaching && s > this.prevSep + 1e-6) { this.peris++; this.approaching = false; }
+        this.prevSep = s;
+        const vr = Math.hypot(this.cv[1][0] - this.cv[0][0], this.cv[1][1] - this.cv[0][1], this.cv[1][2] - this.cv[0][2]);
+        this.phase = (s < 0.12 && vr < 0.3) ? 'Merger remnant'
+          : this.peris === 0 ? (s > 1.8 ? 'Approach' : 'First encounter')
+          : this.peris === 1 ? (this.approaching ? 'Falling back' : 'Tidal tails & bridge')
+          : 'Coalescence';
+      }
     }
     build(type, q) {
       const rng = makeRng(1972 + Math.round(q * 100) + (type === 'retrograde' ? 7 : type === 'headon' ? 13 : 0)), gauss = makeGauss(rng);
-      const M1 = 1, M2 = q, M = M1 + M2; this.M[0] = M1; this.M[1] = M2; this.t = 0;
+      const M1 = 1, M2 = q, M = M1 + M2; this.M[0] = M1; this.M[1] = M2;
+      this.t = 0; this.prevSep = 1e9; this.approaching = true; this.peris = 0; this.phase = 'Approach';
       const rel = new THREE.Vector3(), vrel = new THREE.Vector3();
       const r0 = 5.0, Rp = 1.0;
       if (type === 'headon') {
@@ -1776,35 +1895,51 @@ async function boot() {
         n2.copy(L).applyAxisAngle(new THREE.Vector3(0, 0, 1), -0.62);
         if (type === 'retrograde') n2.negate();
       }
-      const normals = [n1, n2], Rd = [0.78, 0.78 * Math.pow(q, 0.45)];
+      const normals = [n1, n2], Rd = [0.8, 0.8 * Math.pow(q, 0.45)];
+      const NCL = 150, clumps = [new Float32Array(NCL * 2), new Float32Array(NCL * 2)];   // (radius fraction, angle)
+      for (let g = 0; g < 2; g++) for (let c = 0; c < NCL; c++) { clumps[g][c * 2] = 0.2 + 0.85 * Math.sqrt(rng()); clumps[g][c * 2 + 1] = rng() * TAU; }
       const f1 = 1 / (1 + Math.pow(q, 0.8));
       const posData = this.useGPU ? new Float32Array(this.N * 4) : null, velData = this.useGPU ? new Float32Array(this.N * 4) : null;
       const u = new THREE.Vector3(), w = new THREE.Vector3(), p = new THREE.Vector3(), v = new THREE.Vector3(), c3 = [0, 0, 0];
       const eps2 = COLL.EPS * COLL.EPS;
+      const logU = (lo, hi) => Math.exp(Math.log(lo) + (Math.log(hi) - Math.log(lo)) * rng());
       for (let i = 0; i < this.N; i++) {
-        const gal = rng() < f1 ? 0 : 1;
-        const n = normals[gal], Mg = this.M[gal];
+        const gal = rng() < f1 ? 0 : 1, kind = this.type[i];
+        const n = normals[gal], Mg = this.M[gal], R = Rd[gal];
         u.set(0.3, 0.9, 0.1).cross(n).normalize(); w.crossVectors(n, u);
-        const R = Rd[gal];
-        let T, I;
-        if (rng() < 0.12) { // bulge: small isotropic cloud
+        let T = 5000, I = 0.5, base = 0;
+        if (kind === 1) { // bulge: small isotropic cloud
           const r = R * 0.16 * Math.pow(rng(), 0.7), ct = 2 * rng() - 1, st = Math.sqrt(1 - ct * ct), ph = rng() * TAU;
           p.set(r * st * Math.cos(ph), r * ct, r * st * Math.sin(ph));
           const vc = Math.sqrt(Mg * r * r * Math.pow(r * r + eps2, -1.5));
           v.set(gauss(), gauss(), gauss()).normalize().multiplyScalar(vc * 0.75);
-          T = 3600 + 1800 * rng(); I = 0.35 + 0.3 * rng();
-        } else { // disk on circular orbits
-          const r = R * (0.1 + 0.9 * Math.pow(rng(), 0.8)), ph = rng() * TAU;
-          p.copy(u).multiplyScalar(r * Math.cos(ph)).addScaledVector(w, r * Math.sin(ph)).addScaledVector(n, gauss() * 0.012);
+          T = gal === 0 ? logU(3600, 5200) : logU(3300, 4600); I = 0.3 + 0.3 * rng();
+        } else { // disk components on circular orbits
+          // Clumpy (flocculent) structure: test particles have no self-gravity, so seeded grand-design
+          // arms would wind into rings before pericentre. Random clouds instead shear into trailing
+          // arclets, the way flocculent spirals look, and never form artificial rings.
+          let x, ph;
+          const clumpFrac = kind === 0 ? 0.3 : 0.8;
+          if (rng() < clumpFrac) {
+            const c = Math.floor(rng() * NCL), cx0 = clumps[gal][c * 2], cp0 = clumps[gal][c * 2 + 1];
+            const sz = kind === 0 ? 0.05 : 0.035;
+            x = Math.max(0.06, cx0 + gauss() * sz); ph = cp0 + gauss() * sz / Math.max(cx0, 0.1);
+            if (kind === 3) ph -= 0.04 / Math.max(cx0, 0.1);          // dust hugs the upstream side of each cloud
+          } else {
+            x = kind === 0 ? 0.08 + 0.92 * Math.pow(rng(), 0.85) : kind === 2 ? 0.22 + 0.9 * Math.pow(rng(), 0.7) : 0.15 + 0.75 * Math.pow(rng(), 0.8);
+            ph = rng() * TAU;
+          }
+          const r = R * x;
+          p.copy(u).multiplyScalar(r * Math.cos(ph)).addScaledVector(w, r * Math.sin(ph)).addScaledVector(n, gauss() * (kind === 0 ? 0.013 : 0.007));
           const vc = Math.sqrt(Mg * r * r * Math.pow(r * r + eps2, -1.5));
-          v.crossVectors(n, p).normalize().multiplyScalar(vc).addScaledVector(n, gauss() * 0.01);
-          const x = r / R;
-          T = x < 0.3 ? 4200 + 2200 * rng() : Math.exp(Math.log(6500) + Math.log(3.5) * rng());
-          I = 0.3 + 0.45 * rng();
-          if (gal === 1) T *= 0.85;
+          v.crossVectors(n, p).normalize().multiplyScalar(vc).addScaledVector(n, gauss() * 0.008);
+          if (kind === 0) {
+            T = gal === 0 ? (x < 0.3 ? logU(4300, 6200) : logU(6000, 18000)) : (x < 0.3 ? logU(3900, 5200) : logU(4800, 8500));
+            I = 0.3 + 0.45 * rng();
+          } else if (kind === 2) { I = 0.4 + 0.6 * rng(); base = rng() < 0.12 ? 0.45 : 0; }   // a few HII knots from the start
         }
         BB.color(T, c3);
-        if (rng() < 0.04) { c3[0] = 1.0; c3[1] = 0.32; c3[2] = 0.6; I *= 1.4; }   // HII knots
+        if (kind === 2) { c3[0] = base; c3[1] = Math.min(1, 0.5 + 0.75 * rng()); c3[2] = 0; }   // r: initial HII, g: ignition threshold
         this.colArr[i * 4] = c3[0] * 255; this.colArr[i * 4 + 1] = c3[1] * 255; this.colArr[i * 4 + 2] = c3[2] * 255;
         this.colArr[i * 4 + 3] = clamp(I, 0, 1) * 255;
         const cx = this.c[gal][0] + p.x, cy = this.c[gal][1] + p.y, cz = this.c[gal][2] + p.z;
@@ -1818,7 +1953,7 @@ async function boot() {
         }
         vx -= 0.5 * COLL.DT * ax; vy -= 0.5 * COLL.DT * ay; vz -= 0.5 * COLL.DT * az;
         if (this.useGPU) {
-          posData[i * 4] = cx; posData[i * 4 + 1] = cy; posData[i * 4 + 2] = cz; posData[i * 4 + 3] = gal;
+          posData[i * 4] = cx; posData[i * 4 + 1] = cy; posData[i * 4 + 2] = cz; posData[i * 4 + 3] = gal + 2 * kind;
           velData[i * 4] = vx; velData[i * 4 + 1] = vy; velData[i * 4 + 2] = vz; velData[i * 4 + 3] = 0;
         } else {
           this.cpuPos[i * 3] = cx; this.cpuPos[i * 3 + 1] = cy; this.cpuPos[i * 3 + 2] = cz;
@@ -1833,12 +1968,17 @@ async function boot() {
         for (let k = 0; k < 2; k++) { this.gpu.renderTexture(tp, this.posRT[k]); this.gpu.renderTexture(tv, this.velRT[k]); }
         tp.dispose(); tv.dispose();
         this.cur = 0;
-        this.mat.uniforms.tPos.value = this.posRT[0].texture;
+        this.bindTextures();
       } else {
         this.geo.attributes.position.needsUpdate = true;
       }
       this.coreMats[0].uniforms.uSize.value = 3.4; this.coreMats[1].uniforms.uSize.value = 3.4 * Math.pow(q, 0.4);
       this.syncCores();
+    }
+    bindTextures() {
+      this.mat.uniforms.tPos.value = this.posRT[this.cur].texture;
+      this.mat.uniforms.tVel.value = this.velRT[this.cur].texture;
+      if (this.dustMat) this.dustMat.uniforms.tPos.value = this.posRT[this.cur].texture;
     }
     syncCores() {
       for (let b = 0; b < 2; b++) this.cores[b].position.set(this.c[b][0] * COLL.SCALE, this.c[b][1] * COLL.SCALE, this.c[b][2] * COLL.SCALE);
@@ -1847,6 +1987,7 @@ async function boot() {
       mat.uniforms.uC1.value.set(this.c[0][0], this.c[0][1], this.c[0][2]);
       mat.uniforms.uC2.value.set(this.c[1][0], this.c[1][1], this.c[1][2]);
       mat.uniforms.uM1.value = this.M[0]; mat.uniforms.uM2.value = this.M[1];
+      mat.uniforms.uSep.value = this.sep();
     }
     // Symplectic leapfrog with velocities at half steps:
     //   forward : v(n+½) = v(n−½) + a(x_n) dt ;  x(n+1) = x_n + v(n+½) dt
@@ -1874,7 +2015,7 @@ async function boot() {
           }
           this.cur = b;
         }
-        this.mat.uniforms.tPos.value = this.posRT[this.cur].texture;
+        this.bindTextures();
       } else {
         const P = this.cpuPos, V = this.cpuVel, N = this.N, e2 = COLL.EPS * COLL.EPS;
         for (let s = 0; s < n; s++) {
@@ -1900,6 +2041,7 @@ async function boot() {
     }
     dispose() {
       this.geo.dispose(); this.mat.dispose();
+      if (this.dustGeo) { this.dustGeo.dispose(); this.dustMat.dispose(); }
       for (const m of this.coreMats) m.dispose();
       for (const c of this.cores) c.geometry.dispose();
       if (this.useGPU) {
@@ -2286,6 +2428,7 @@ async function boot() {
     if (coll) { coll.dispose(); coll = null; }
     coll = new CollisionSim(TIERS[S.tier].coll);
     coll.build(S.encounter, S.massRatio);
+    collAuto = true;
     scene.add(coll.group);
   }
   function restartCollision() { rebuildCollision(); toast('Encounter restarted · ' + S.encounter); }
@@ -2429,7 +2572,7 @@ async function boot() {
   canvas.addEventListener('pointercancel', endPtr);
   canvas.addEventListener('pointerleave', () => { ui.tooltip.classList.remove('on'); hoverX = -1; });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  controls.addEventListener('start', () => { director.interrupt(); });
+  controls.addEventListener('start', () => { director.interrupt(); collAuto = false; });
 
   function updateHover() {
     hoverDirty = false;
@@ -2580,6 +2723,15 @@ async function boot() {
         camera.position.add(_q); controls.target.add(_q);
         director.trackPrev.copy(_p);
       }
+      if (S.mode === 'collision' && coll && collAuto && !dragging) {
+        // cinematic auto-framing until the user takes over: keep both galaxies and their tails in view
+        const want = clamp(coll.sep() * COLL.SCALE * 1.45 + (coll.peris > 0 ? 100 : 72), 95, 330);
+        _p.subVectors(camera.position, controls.target);
+        const len = Math.max(_p.length(), 1e-3);
+        _p.multiplyScalar(lerp(len, want, 1 - Math.exp(-dt * 0.6)) / len).applyAxisAngle(yAxis, dt * 0.035);
+        controls.target.multiplyScalar(Math.max(0, 1 - dt * 0.8));   // drift back to the centre of mass
+        camera.position.copy(controls.target).add(_p);
+      }
       controls.update();
     }
     controls.zoomSpeed = camera.position.length() < DIVE.start ? 1.6 : 1.15;
@@ -2612,6 +2764,7 @@ async function boot() {
       U.uOmega.value = 2.2 * Math.pow(MSUN_REF / massM, 0.3);
       // nuclear star cluster (R ≈ 12 ly): angular radius grows as the physical distance shrinks
       U.uPixAng.value = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / (innerHeight * dprNow);
+      U.uPsfK.value = 0.9 / (dprNow * dprNow);   // same PSF size in CSS pixels on any display
       const thc = Math.atan(12 / physDist);
       U.uNscTan.value = Math.tan(Math.min(thc, 1.3));
       U.uNscMix.value = 1 - smoothstep(0.55, 1.15, thc);
@@ -2682,7 +2835,7 @@ async function boot() {
   function updateHUD(D, rObs, inDive) {
     if (S.mode === 'collision') {
       ui.modeName.textContent = 'Collision · ' + S.encounter;
-      ui.modeSub.textContent = 't = ' + fmt(coll ? coll.t * COLL.MYR_PER_UNIT : 0, 0) + ' Myr since approach';
+      ui.modeSub.textContent = coll ? 't = ' + fmt(coll.t * COLL.MYR_PER_UNIT, 0) + ' Myr · ' + coll.phase + ' · ' + fmt(coll.sep() * COLL.SCALE, 0) + ' kly apart' : '';
       ui.brand.classList.remove('dive');
     } else if (inDive && rObs < 5e4) {
       ui.modeName.textContent = 'Core dive';
